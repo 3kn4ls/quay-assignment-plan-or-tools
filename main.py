@@ -19,22 +19,22 @@ def create_example_problem() -> Problem:
 
     vessels = [
         # --- Arrivals at shift 0 ---
-        Vessel("V1-MSC", 800, 300, 14.0, 120, 0, 6, 4),
-        Vessel("V2-MAERSK", 600, 250, 13.0, 120, 0, 5, 3),
-        Vessel("V3-COSCO", 500, 280, 14.5, 110, 0, 8, 3),
+        Vessel(name="V1-MSC", workload=800, loa=300, draft=14.0, productivity=120, etw=0, etc=6, max_cranes=4),
+        Vessel(name="V2-MAERSK", workload=600, loa=250, draft=13.0, productivity=120, etw=0, etc=5, max_cranes=3),
+        Vessel(name="V3-COSCO", workload=500, loa=280, draft=14.5, productivity=110, etw=0, etc=8, max_cranes=3),
         # --- Arrivals at shift 1 ---
-        Vessel("V4-CMA", 400, 200, 12.0, 100, 1, 6, 3),
-        Vessel("V5-HAPAG", 350, 180, 11.0, 100, 1, 8, 2),
+        Vessel(name="V4-CMA", workload=400, loa=200, draft=12.0, productivity=100, etw=1, etc=6, max_cranes=3),
+        Vessel(name="V5-HAPAG", workload=350, loa=180, draft=11.0, productivity=100, etw=1, etc=8, max_cranes=2),
         # --- Arrivals at shift 2 ---
-        Vessel("V6-ONE", 700, 290, 13.5, 115, 2, 7, 3),
-        Vessel("V7-EVERGREEN", 900, 330, 15.0, 130, 2, 8, 4),
+        Vessel(name="V6-ONE", workload=700, loa=290, draft=13.5, productivity=115, etw=2, etc=7, max_cranes=3),
+        Vessel(name="V7-EVERGREEN", workload=900, loa=330, draft=15.0, productivity=130, etw=2, etc=8, max_cranes=4),
         # --- Arrivals at shift 3 ---
-        Vessel("V8-HMM", 450, 220, 12.5, 105, 3, 7, 3),
-        Vessel("V9-YANGMING", 550, 260, 13.8, 110, 3, 9, 3),
+        Vessel(name="V8-HMM", workload=450, loa=220, draft=12.5, productivity=105, etw=3, etc=7, max_cranes=3),
+        Vessel(name="V9-YANGMING", workload=550, loa=260, draft=13.8, productivity=110, etw=3, etc=9, max_cranes=3),
         # --- Arrivals at shift 4-5 ---
-        Vessel("V10-ZIM", 400, 210, 11.5, 100, 4, 8, 2),
-        Vessel("V11-WANHAI", 300, 190, 10.5, 90, 4, 9, 2),
-        Vessel("V12-PIL", 600, 270, 13.2, 120, 5, 10, 3),
+        Vessel(name="V10-ZIM", workload=400, loa=210, draft=11.5, productivity=100, etw=4, etc=8, max_cranes=2),
+        Vessel(name="V11-WANHAI", workload=300, loa=190, draft=10.5, productivity=90, etw=4, etc=9, max_cranes=2),
+        Vessel(name="V12-PIL", workload=600, loa=270, draft=13.2, productivity=120, etw=5, etc=10, max_cranes=3),
     ]
 
     num_shifts = 12  # Increased shifts to accommodate more vessels
@@ -59,22 +59,22 @@ def create_depth_constraint_example() -> Problem:
 
     vessels = [
         # --- DEEP DRAFT (Require 0-1200m) ---
-        Vessel("V1-Deep-0", 700, 280, 15.0, 120, 0, 6, 4),
-        Vessel("V2-Deep-1", 800, 300, 14.5, 130, 1, 7, 4),
-        Vessel("V3-Deep-2", 650, 290, 14.0, 115, 2, 8, 3),
-        Vessel("V4-Deep-3", 750, 310, 15.5, 125, 3, 9, 4),
-        Vessel("V5-Deep-4", 600, 270, 13.5, 110, 4, 8, 3),
+        Vessel(name="V1-Deep-0", workload=700, loa=280, draft=15.0, productivity=120, etw=0, etc=6, max_cranes=4),
+        Vessel(name="V2-Deep-1", workload=800, loa=300, draft=14.5, productivity=130, etw=1, etc=7, max_cranes=4),
+        Vessel(name="V3-Deep-2", workload=650, loa=290, draft=14.0, productivity=115, etw=2, etc=8, max_cranes=3),
+        Vessel(name="V4-Deep-3", workload=750, loa=310, draft=15.5, productivity=125, etw=3, etc=9, max_cranes=4),
+        Vessel(name="V5-Deep-4", workload=600, loa=270, draft=13.5, productivity=110, etw=4, etc=8, max_cranes=3),
         
         # --- SHALLOW DRAFT (Can fit in 1200-2000m or 0-1200m) ---
-        Vessel("V6-Shallow-0", 400, 200, 11.0, 100, 0, 5, 2),
-        Vessel("V7-Shallow-0b", 350, 180, 10.5, 90, 0, 5, 2),
-        Vessel("V8-Shallow-1", 450, 220, 11.5, 105, 1, 6, 3),
-        Vessel("V9-Shallow-2", 500, 240, 11.8, 110, 2, 7, 3),
-        Vessel("V10-Shallow-3", 300, 160, 9.0, 80, 3, 8, 2),
+        Vessel(name="V6-Shallow-0", workload=400, loa=200, draft=11.0, productivity=100, etw=0, etc=5, max_cranes=2),
+        Vessel(name="V7-Shallow-0b", workload=350, loa=180, draft=10.5, productivity=90, etw=0, etc=5, max_cranes=2),
+        Vessel(name="V8-Shallow-1", workload=450, loa=220, draft=11.5, productivity=105, etw=1, etc=6, max_cranes=3),
+        Vessel(name="V9-Shallow-2", workload=500, loa=240, draft=11.8, productivity=110, etw=2, etc=7, max_cranes=3),
+        Vessel(name="V10-Shallow-3", workload=300, loa=160, draft=9.0, productivity=80, etw=3, etc=8, max_cranes=2),
         
         # --- MIXED/MEDIUM (Arrivals later) ---
-        Vessel("V11-Med-4", 550, 250, 12.0, 110, 4, 10, 3),  # Max depth for shallow section
-        Vessel("V12-Deep-5", 850, 320, 14.8, 140, 5, 12, 4), # Late huge ship (deep)
+        Vessel(name="V11-Med-4", workload=550, loa=250, draft=12.0, productivity=110, etw=4, etc=10, max_cranes=3),
+        Vessel(name="V12-Deep-5", workload=850, loa=320, draft=14.8, productivity=140, etw=5, etc=12, max_cranes=4),
     ]
 
     return Problem(
