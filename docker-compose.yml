@@ -1,0 +1,5 @@
+services:
+  solver:
+    build: .
+    volumes:
+      - ./output:/app/output
