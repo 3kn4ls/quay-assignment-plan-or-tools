@@ -220,12 +220,32 @@ def create_example_problem() -> Problem:
                 avail.remove("STS-01")
         availability[t] = avail
 
+    # Create a Forbidden Zone (e.g., Quay Maintenance)
+    # Block 200m section (start=400, end=600) for Shifts 2 and 3 (start=2, end=4)
+    forbidden_zones = [
+        ForbiddenZone(
+            start_berth_position=400, 
+            end_berth_position=600, 
+            start_shift=2, 
+            end_shift=4, 
+            description="Quay Wall Maintenance A"
+        ),
+        ForbiddenZone(
+            start_berth_position=1500, 
+            end_berth_position=1600, 
+            start_shift=6, 
+            end_shift=8, 
+            description="Dredging Operations B"
+        )
+    ]
+
     return Problem(
         berth=berth,
         vessels=vessels,
         cranes=cranes,
         shifts=shifts,
         crane_availability_per_shift=availability,
+        forbidden_zones=forbidden_zones
     )
 
 
