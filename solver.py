@@ -18,17 +18,19 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     model = cp_model.CpModel()
     berth = problem.berth
     vessels = problem.vessels
+    cranes = problem.cranes
     T = problem.num_shifts
     n = len(vessels)
-
+    
+    # Map crane id to object for easy lookup
+    crane_map = {c.id: c for c in cranes}
+    
     # =============================================
     # CONSTANTS
     # =============================================
     GAP = 40  # Minimum distance (meters) between vessels and from berth edges
 
     # --- Spatial discretization for depth constraints ---
-    # We discretize berth positions in 1-meter increments.
-    # For depth constraints, we precompute valid positions per vessel.
     valid_positions = {}
     for i, v in enumerate(vessels):
         valid_positions[i] = []
@@ -75,36 +77,35 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
         duration[i] = model.new_int_var(1, T - v.etw, f"dur_{v.name}")
         model.add(end[i] == start[i] + duration[i])
 
-    # 3. Crane assignment q_{i,t}: cranes for vessel i in shift t
-    q = {}
-    for i, v in enumerate(vessels):
-        for t in range(T):
-            q[i, t] = model.new_int_var(0, v.max_cranes, f"q_{v.name}_{t}")
+    # 3. Crane assignment assign[c_id, i, t]: is crane c assigned to vessel i in shift t?
+    # Only create variables if crane is available in that shift
+    assign = {} 
+    
+    # Pre-process available cranes per shift for easier access
+    # problem.crane_availability_per_shift is Dict[int, List[str]]
+    
+    for t in range(T):
+        available_crane_ids = problem.crane_availability_per_shift.get(t, [])
+        for c_id in available_crane_ids:
+            if c_id not in crane_map:
+                continue
+            for i, v in enumerate(vessels):
+                assign[c_id, i, t] = model.new_bool_var(f"assign_{c_id}_{v.name}_{t}")
 
     # =============================================
     # CONSTRAINTS
     # =============================================
 
     # --- 4.1 Spatial constraints ---
-
-    # Berth length: vessel must fit within berth (redundant with domain but explicit)
-    # Also enforce 40m margin from edges
     for i, v in enumerate(vessels):
         model.add(pos[i] >= GAP)
         model.add(pos[i] + v.loa <= berth.length - GAP)
 
     # --- 4.2 Non-overlap: spatial + temporal ---
-    # Two vessels cannot overlap in BOTH space and time simultaneously.
-    # We use interval variables and no-overlap-2d constraint.
-    # We increase the spatial size by GAP to enforce distance BETWEEN vessels.
-    
-    # Create interval variables for the 2D no-overlap constraint
-    x_intervals = []  # spatial intervals
-    y_intervals = []  # temporal intervals
+    x_intervals = []
+    y_intervals = []
 
     for i, v in enumerate(vessels):
-        # "Padding" the vessel size with GAP ensures that if two intervals don't overlap,
-        # their start positions are at least (LOA + GAP) apart.
         x_size = v.loa + GAP
         x_interval = model.new_fixed_size_interval_var(pos[i], x_size, f"x_int_{v.name}")
         x_intervals.append(x_interval)
@@ -117,98 +118,139 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     model.add_no_overlap_2d(x_intervals, y_intervals)
 
     # --- 4.2b Forbidden Zones ---
-    # Ensure vessels do not overlap with forbidden zones (maintenance, etc.)
     for i, v in enumerate(vessels):
         for z in problem.forbidden_zones:
-            # Create fixed intervals for the forbidden zone
-            # Note: We use constant intervals here.
-            # Spatial interval for the zone
             z_x_interval = model.new_fixed_size_interval_var(
                 z.start_berth_position, 
                 z.end_berth_position - z.start_berth_position, 
                 f"z_x_{z.description}_{i}"
             )
-            # Temporal interval for the zone
             z_y_interval = model.new_fixed_size_interval_var(
                 z.start_shift, 
                 z.end_shift - z.start_shift, 
                 f"z_y_{z.description}_{i}"
             )
-            
-            # Add pairwise non-overlap constraint between this vessel and this zone
             model.add_no_overlap_2d(
                 [x_intervals[i], z_x_interval], 
                 [y_intervals[i], z_y_interval]
             )
 
-
     # --- 4.3 Temporal constraints ---
-
-    # Vessel cannot start before its earliest arrival
     for i, v in enumerate(vessels):
         model.add(start[i] >= v.etw)
 
     # --- 4.4 Crane assignment constraints ---
-    # For each vessel i and shift t, define whether the vessel is active.
+    
+    # 4.4.1 Active vessel constraints
     active = {}
     for i, v in enumerate(vessels):
         for t in range(T):
-            active[i, t] = model.new_bool_var(f"active_{v.name}_{t}_v2")
+            active[i, t] = model.new_bool_var(f"active_{v.name}_{t}")
 
-            # active[i,t] == 1  <=>  start[i] <= t AND t < end[i]
-            # We linearize with:
-            #   active => start[i] <= t
-            #   active => t < end[i]  (i.e., t + 1 <= end[i])
-            #   NOT active => (start[i] > t) OR (t >= end[i])
+            # active <=> start <= t < end
             model.add(start[i] <= t).only_enforce_if(active[i, t])
             model.add(end[i] >= t + 1).only_enforce_if(active[i, t])
-
-            # If not active, at least one bound must be violated.
-            # start[i] > t  OR  end[i] <= t
+            
             b1 = model.new_bool_var(f"b1_{v.name}_{t}")
             b2 = model.new_bool_var(f"b2_{v.name}_{t}")
             model.add(start[i] > t).only_enforce_if(b1)
             model.add(end[i] <= t).only_enforce_if(b2)
             model.add_bool_or([b1, b2]).only_enforce_if(~active[i, t])
 
-            # Cranes only when active
-            model.add(q[i, t] == 0).only_enforce_if(~active[i, t])
-
-            # Shift availability: if the vessel is not available in this shift
+            # Shift availability
             if v.available_shifts is not None and t not in v.available_shifts:
-                model.add(q[i, t] == 0)
                 model.add(active[i, t] == 0)
 
-    # At least 1 crane when active (vessel must be worked on)
+    # 4.4.2 Crane assignment logic
+    # Iterate over all possible assignments
+    for (c_id, i, t), var in assign.items():
+        # Crane can only be assigned if vessel is active
+        model.add(var == 0).only_enforce_if(~active[i, t])
+        
+        # Spatial Coverage: if assigned, vessel must be within crane range
+        c = crane_map[c_id]
+        # range_start <= pos[i]  AND pos[i] + loa <= range_end
+        # The user requested specific coverage ranges.
+        # We enforce strict containment.
+        model.add(pos[i] >= c.berth_range_start).only_enforce_if(var)
+        model.add(pos[i] + v.loa <= c.berth_range_end).only_enforce_if(var)
+        
+        # One vessel per crane per shift
+        # Handled globally below, but implicit here is fine too.
+        # Actually logic is grouped below.
+
+    # 4.4.3 One vessel per crane per shift
+    # Group assignments by crane and shift
+    assignments_by_crane_shift = {}
+    for (c_id, i, t), var in assign.items():
+        if (c_id, t) not in assignments_by_crane_shift:
+            assignments_by_crane_shift[c_id, t] = []
+        assignments_by_crane_shift[c_id, t].append(var)
+    
+    for _, vars in assignments_by_crane_shift.items():
+        model.add(sum(vars) <= 1)
+
+    # 4.4.4 Max cranes per vessel
+    # Group assignments by vessel and shift
+    assignments_by_vessel_shift = {}
+    for (c_id, i, t), var in assign.items():
+        if (i, t) not in assignments_by_vessel_shift:
+            assignments_by_vessel_shift[i, t] = []
+        assignments_by_vessel_shift[i, t].append(var)
+
     for i, v in enumerate(vessels):
         for t in range(T):
-            model.add(q[i, t] >= 1).only_enforce_if(active[i, t])
+            if (i, t) in assignments_by_vessel_shift:
+                # Max cranes limit
+                model.add(sum(assignments_by_vessel_shift[i, t]) <= v.max_cranes)
+                
+                # At least one crane if active (must be worked on if active)
+                # This prevents "active" but 0 cranes, which prolongs duration artificially
+                model.add(sum(assignments_by_vessel_shift[i, t]) >= 1).only_enforce_if(active[i, t])
+            else:
+                # If no cranes *possible* for this vessel in this shift (e.g. no availability),
+                # then it cannot be active!
+                model.add(active[i, t] == 0)
 
-    # Workload fulfillment: sum of (cranes * productivity) >= workload
+    # =============================================
+    # 4.4.5 Workload fulfillment
+    # =============================================
+    # Sum of (crane_assigned * crane_productivity) >= workload
+    
+    # We need to construct the sum efficiently.
+    # Group vars by vessel.
+    vessel_work = {i: [] for i in range(n)}
+    
+    for (c_id, i, t), var in assign.items():
+        c = crane_map[c_id]
+        v = vessels[i]
+        
+        # Determine productivity based on vessel preference
+        productivity = 0
+        if v.productivity_preference == "MAX":
+            productivity = c.max_productivity
+        elif v.productivity_preference == "MIN":
+            productivity = c.min_productivity
+        else: # INTERMEDIATE
+            productivity = (c.min_productivity + c.max_productivity) // 2
+
+        # Multiply var by determined productivity
+        vessel_work[i].append(var * productivity)
+
+        
     for i, v in enumerate(vessels):
-        model.add(
-            sum(q[i, t] * v.productivity for t in range(T)) >= v.workload
-        )
+        if vessel_work[i]:
+            model.add(sum(vessel_work[i]) >= v.workload)
+        else:
+            # If no assignments possible at all? Infeasible.
+            print(f"Warning: No possible crane assignments for vessel {v.name}")
+            return Solution([], 0, "INFEASIBLE")
 
-    # Max cranes per vessel (already bounded by variable domain, but explicit)
-    for i, v in enumerate(vessels):
-        for t in range(T):
-            model.add(q[i, t] <= v.max_cranes)
-
-    # Global crane capacity per shift
-    for t in range(T):
-        model.add(
-            sum(q[i, t] for i in range(n)) <= problem.total_cranes_per_shift[t]
-        )
 
     # =============================================
     # OBJECTIVE FUNCTION
     # =============================================
-    # Minimize a weighted combination of:
-    #   1. Total waiting/turnaround time: sum(end[i] - etw[i])
-    #   2. Makespan: max(end[i])
-    #   3. Total crane usage (secondary)
-
+    
     makespan = model.new_int_var(0, T, "makespan")
     for i in range(n):
         model.add(makespan >= end[i])
@@ -220,12 +262,10 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     waiting_terms = []
     
     for i, v in enumerate(vessels):
-        # Turnaround calculation: end - etw
         t_i = model.new_int_var(0, T, f"turnaround_{v.name}")
         model.add(t_i == end[i] - v.etw)
         turnaround_terms.append(t_i)
         
-        # Waiting time calculation: start - etw
         w_i = model.new_int_var(0, T, f"waiting_{v.name}")
         model.add(w_i == start[i] - v.etw)
         waiting_terms.append(w_i)
@@ -233,13 +273,16 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     model.add(total_turnaround == sum(turnaround_terms))
     model.add(total_waiting_time == sum(waiting_terms))
 
-    total_cranes_used = model.new_int_var(0, T * n * 20, "total_cranes")
-    model.add(total_cranes_used == sum(q[i, t] for i in range(n) for t in range(T)))
+    # Total crane usage (number of crane-shifts)
+    crane_usage_vars = list(assign.values())
+    total_cranes_used = model.new_int_var(0, max(1, len(crane_usage_vars)), "total_cranes")
+    if crane_usage_vars:
+        model.add(total_cranes_used == sum(crane_usage_vars))
+    else:
+        model.add(total_cranes_used == 0)
 
-    # Weighted objective: prioritize turnaround, then makespan, then crane compactness
-    # Added W_WAITING to prioritize starting as close to ETW as possible.
     W_TURNAROUND = 10
-    W_WAITING = 20  # High penalty for delaying the start
+    W_WAITING = 20
     W_MAKESPAN = 5
     W_CRANES = 1
 
@@ -259,7 +302,6 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     solver.parameters.num_workers = 8
 
     status = solver.solve(model)
-
     status_name = {
         cp_model.OPTIMAL: "OPTIMAL",
         cp_model.FEASIBLE: "FEASIBLE",
@@ -276,20 +318,30 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     # =============================================
     vessel_solutions = []
     for i, v in enumerate(vessels):
-        cranes_per_shift = {}
+        assigned_cranes_map = {} # shift -> list of crane ids
         s = solver.value(start[i])
         e = solver.value(end[i])
+        
         for t in range(s, e):
-            crane_val = solver.value(q[i, t])
-            if crane_val > 0:
-                cranes_per_shift[t] = crane_val
+            # assigned_cranes_map initialization moved inside loop to only capture active shifts?
+            # Or should return dict for shifts
+            current_cranes = []
+            
+            # Check assignments
+            for (c_id, v_idx, shift), var in assign.items():
+                if v_idx == i and shift == t:
+                    if solver.value(var) == 1:
+                        current_cranes.append(c_id)
+            
+            if current_cranes:
+                assigned_cranes_map[t] = current_cranes
 
         vs = VesselSolution(
             vessel_name=v.name,
             berth_position=solver.value(pos[i]),
             start_shift=s,
             end_shift=e,
-            cranes_per_shift=cranes_per_shift,
+            assigned_cranes=assigned_cranes_map,
         )
         vessel_solutions.append(vs)
 

@@ -87,30 +87,61 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
         )
         ax.add_patch(rect)
 
-        # Label with vessel name, crane assignment per shift, and draft
-        crane_str = ",".join(
-            str(vs.cranes_per_shift.get(t, 0))
-            for t in range(vs.start_shift, vs.end_shift)
-        )
-        label = f"{vs.vessel_name}\nQ:[{crane_str}]\nD:{vessel.draft}m"
+        # Label with vessel name, crane count per shift, and productivity details
+        # We need crane_map to lookup productivity
+        crane_map = {c.id: c for c in problem.cranes}
+        pref = vessel.productivity_preference
+        
+        # Build detailed crane string
+        # Format per shift: "T0: 2(240)" -> 2 cranes, total 240 prod
+        crane_details = []
+        for t in range(vs.start_shift, vs.end_shift):
+            c_list = vs.assigned_cranes.get(t, [])
+            if not c_list:
+                continue
+                
+            total_prod = 0
+            for cid in c_list:
+                if cid in crane_map:
+                    c = crane_map[cid]
+                    if pref == "MAX":
+                        total_prod += c.max_productivity
+                    elif pref == "MIN":
+                        total_prod += c.min_productivity
+                    else:
+                        total_prod += (c.min_productivity + c.max_productivity) // 2
+            
+            # Compact format: "S{t}:{count}c" or just count
+            # Given space constraints, maybe just list count and average prod?
+            # Or just list of cranes per shift is too long.
+            # Let's show: "S3:2(230)"
+            crane_details.append(f"S{t}:{len(c_list)}({total_prod})")
+        
+        # Wrap crane details if too long
+        crane_str = "\n".join(crane_details)
+        
+        label = f"{vs.vessel_name}\n{vessel.productivity_preference}\n{crane_str}"
+        
         ax.text(
             x + width / 2, y + height / 2, label,
-            ha="center", va="center", fontsize=7, fontweight="bold", color="white",
+            ha="center", va="center", fontsize=6, fontweight="bold", color="white",
+            clip_on=True
         )
 
     # Axis configuration
     # Calculate total cranes used per shift
-    total_cranes_per_shift = {}
+    total_cranes_used_per_shift = {}
     for t in range(problem.num_shifts):
-        used = sum(
-            vs.cranes_per_shift.get(t, 0) for vs in solution.vessel_solutions
-        )
-        total_cranes_per_shift[t] = used
+        used = 0
+        for vs in solution.vessel_solutions:
+            c_list = vs.assigned_cranes.get(t, [])
+            used += len(c_list)
+        total_cranes_used_per_shift[t] = used
 
     # X-axis configuration with crane usage labels
     ax.set_xlim(0, problem.num_shifts)
     ax.set_ylim(0, problem.berth.length)
-    ax.set_xlabel("Shift\n(Used / Total Gangs)", fontsize=12)
+    ax.set_xlabel("Shift\n(Used / Total Available)", fontsize=12)
     ax.set_ylabel("Berth Position (m)", fontsize=12)
     ax.set_title(
         f"BAP + QCAP Solution — Status: {solution.status} "
@@ -122,9 +153,10 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
     ax.set_xticks(range(problem.num_shifts))
     xtick_labels = []
     for t in range(problem.num_shifts):
-        used = total_cranes_per_shift[t]
-        cap = problem.total_cranes_per_shift[t]
-        xtick_labels.append(f"{t}\n({used}/{cap})")
+        used = total_cranes_used_per_shift[t]
+        # Total available cranes for this shift
+        available = len(problem.crane_availability_per_shift.get(t, []))
+        xtick_labels.append(f"{t}\n({used}/{available})")
     
     ax.set_xticklabels(xtick_labels, fontsize=9)
     ax.grid(True, alpha=0.3)
@@ -169,11 +201,6 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
     
     # Set x-limit for depth
     ax_depth.set_xlim(0, max_finite_depth * 1.25)
-    
-    # Hide y-ticks on the depth plot as it shares with the main plot
-    # But keeping them visible on the right might be nice? 
-    # With sharey=True, they are usually hidden on the left of the second plot.
-    # Let's keep it clean.
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
@@ -193,34 +220,69 @@ def print_solution(problem: Problem, solution: Solution):
         return
 
     vessels_by_name = {v.name: v for v in problem.vessels}
+    crane_map = {c.id: c for c in problem.cranes}
 
     for vs in solution.vessel_solutions:
         vessel = vessels_by_name[vs.vessel_name]
-        total_moves = sum(
-            cranes * vessel.productivity
-            for cranes in vs.cranes_per_shift.values()
-        )
+        
+        # Calculate delivered capacity based on vessel preference
+        total_moves = 0
+        pref = vessel.productivity_preference
+        
+        for t, crane_ids in vs.assigned_cranes.items():
+            for cid in crane_ids:
+                if cid in crane_map:
+                    c = crane_map[cid]
+                    prod = 0
+                    if pref == "MAX":
+                        prod = c.max_productivity
+                    elif pref == "MIN":
+                        prod = c.min_productivity
+                    else:
+                        prod = (c.min_productivity + c.max_productivity) // 2
+                    total_moves += prod
+        
         print(f"\n--- {vs.vessel_name} ---")
         print(f"  Berth position: {vs.berth_position}m - "
               f"{vs.berth_position + vessel.loa}m")
         print(f"  Time: shift {vs.start_shift} -> {vs.end_shift} "
               f"(duration: {vs.end_shift - vs.start_shift} shifts)")
         print(f"  ETW: {vessel.etw}, ETC: {vessel.etc}")
+        print(f"  Productivity Mode: {pref}")
         print(f"  Workload: {vessel.workload} moves, "
               f"Capacity delivered: {total_moves} moves")
         print(f"  Crane assignment per shift:")
         for t in range(vs.start_shift, vs.end_shift):
-            cranes = vs.cranes_per_shift.get(t, 0)
-            print(f"    Shift {t}: {cranes} cranes "
-                  f"({cranes * vessel.productivity} moves)")
+            crane_ids = vs.assigned_cranes.get(t, [])
+            
+            # Calculate moves for this shift
+            moves_this_shift = 0
+            for cid in crane_ids:
+                if cid in crane_map:
+                    c = crane_map[cid]
+                    if pref == "MAX":
+                        moves_this_shift += c.max_productivity
+                    elif pref == "MIN":
+                        moves_this_shift += c.min_productivity
+                    else:
+                        moves_this_shift += (c.min_productivity + c.max_productivity) // 2
+            
+            print(f"    Shift {t}: {len(crane_ids)} cranes {crane_ids} "
+                  f"({moves_this_shift} moves)")
 
     # Global crane usage summary
     print("\n" + "=" * 70)
     print("Global Crane Usage per Shift:")
     for t in range(problem.num_shifts):
-        total = sum(
-            vs.cranes_per_shift.get(t, 0) for vs in solution.vessel_solutions
-        )
-        cap = problem.total_cranes_per_shift[t]
-        bar = "#" * total + "." * (cap - total)
-        print(f"  Shift {t}: {total}/{cap} [{bar}]")
+        used_count = 0
+        for vs in solution.vessel_solutions:
+            used_count += len(vs.assigned_cranes.get(t, []))
+            
+        available_count = len(problem.crane_availability_per_shift.get(t, []))
+        
+        # Simple text bar
+        bar_len = min(20, used_count)
+        # Scale to max capacity?
+        # Just use raw count for now
+        bar = "#" * bar_len
+        print(f"  Shift {t}: {used_count}/{available_count} [{bar}]")
