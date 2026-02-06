@@ -3,7 +3,9 @@
 import os
 from typing import List, Dict
 
-from models import Berth, Problem, Vessel, ForbiddenZone, Crane, CraneType, ProductivityMode
+from models import Berth, Problem, Vessel, ForbiddenZone, Crane, CraneType, ProductivityMode, Shift
+import datetime
+
 from solver import solve
 from visualization import plot_solution, print_solution
 
@@ -43,6 +45,31 @@ def create_cranes(berth_length: int) -> List[Crane]:
     return cranes
 
 
+def generate_shifts(start_date_str: str, num_total_shifts: int) -> List[Shift]:
+    """Generate a list of consecutive shifts starting from a date."""
+    # Assuming start_date is DDMMYYYY
+    d = int(start_date_str[:2])
+    m = int(start_date_str[2:4])
+    y = int(start_date_str[4:])
+    
+    current_date = datetime.date(y, m, d)
+    shifts = []
+    
+    idx = 0
+    while len(shifts) < num_total_shifts:
+        # 4 shifts per day
+        for s_idx in range(1, 5):
+            if len(shifts) >= num_total_shifts:
+                break
+            
+            date_fmt = current_date.strftime("%d%m%Y")
+            shifts.append(Shift(date_str=date_fmt, shift_index=s_idx))
+            
+        current_date += datetime.timedelta(days=1)
+        
+    return shifts
+
+
 def create_example_problem() -> Problem:
     """Create a realistic example problem instance."""
 
@@ -72,61 +99,28 @@ def create_example_problem() -> Problem:
     ]
 
     num_shifts = 12
+    shifts = generate_shifts("31122025", num_shifts)
+    
     cranes = create_cranes(berth.length)
     
-    # Define availability per shift
-    # For now, all cranes available all shifts
-    # But let's simulate maintenance: STS-01 unavailable in shift 0-2
+    # Availability logic...
     availability: Dict[int, List[str]] = {}
     all_crane_ids = [c.id for c in cranes]
     
     for t in range(num_shifts):
-        # Default: all avail
         avail = list(all_crane_ids)
-        
-        # Example Maintenance on STS-01 for first 2 shifts
         if t < 2:
             if "STS-01" in avail:
                 avail.remove("STS-01")
-                
         availability[t] = avail
 
     return Problem(
         berth=berth,
         vessels=vessels,
         cranes=cranes,
-        num_shifts=num_shifts,
+        shifts=shifts,
         crane_availability_per_shift=availability,
     )
-
-
-def create_forbidden_zone_example() -> Problem:
-    """Example with forbidden zones (maintenance, etc)."""
-    
-    # Start with standard problem
-    problem = create_example_problem()
-    
-    # Add restricted zones
-    # 1. Maintenance at start of berth (0-400m) for first 3 shifts
-    z1 = ForbiddenZone(
-        start_berth_position=0,
-        end_berth_position=400,
-        start_shift=0,
-        end_shift=3,
-        description="Quay Maint A"
-    )
-    
-    # 2. Dredging operations in middle (1000-1300m) for shifts 4-7
-    z2 = ForbiddenZone(
-        start_berth_position=1000,
-        end_berth_position=1300,
-        start_shift=4,
-        end_shift=7,
-        description="Dredging Ops"
-    )
-    
-    problem.forbidden_zones = [z1, z2]
-    return problem
 
 
 def main():
@@ -139,7 +133,7 @@ def main():
 
     # --- Example 3: Forbidden Zones ---
     print("\n>>> Example 3: Forbidden Zones (Maintenance) & Specific Cranes")
-    problem3 = create_forbidden_zone_example()
+    problem3 = create_example_problem()
     
     # Print crane setup
     print(f"Loaded {len(problem3.cranes)} cranes.")

@@ -156,9 +156,13 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
         used = total_cranes_used_per_shift[t]
         # Total available cranes for this shift
         available = len(problem.crane_availability_per_shift.get(t, []))
-        xtick_labels.append(f"{t}\n({used}/{available})")
+        
+        # Get shift label
+        shift_label = str(problem.shifts[t]) if t < len(problem.shifts) else str(t)
+        
+        xtick_labels.append(f"{shift_label}\n({used}/{available})")
     
-    ax.set_xticklabels(xtick_labels, fontsize=9)
+    ax.set_xticklabels(xtick_labels, fontsize=7, rotation=45)
     ax.grid(True, alpha=0.3)
     ax.set_axisbelow(True)
 
@@ -296,6 +300,15 @@ def plot_crane_schedule(problem: Problem, solution: Solution, output_path: str =
     ax.set_yticklabels(y_labels)
     
     ax.set_xlim(0, problem.num_shifts)
+    
+    # Update X-ticks to show Shift Dates
+    ax.set_xticks([t + 0.5 for t in range(problem.num_shifts)])
+    x_labels_cranes = []
+    for t in range(problem.num_shifts):
+        shift_label = str(problem.shifts[t]) if t < len(problem.shifts) else str(t)
+        x_labels_cranes.append(shift_label)
+    ax.set_xticklabels(x_labels_cranes, rotation=45, fontsize=8)
+
     ax.set_ylim(0, len(cranes_sorted))
     
     ax.set_xlabel("Shift")

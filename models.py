@@ -56,6 +56,19 @@ class ForbiddenZone:
 
 
 @dataclass
+class Shift:
+    """Represents a specific operational shift."""
+    date_str: str  # Format: "DDMMYYYY"
+    shift_index: int  # 1, 2, 3, or 4
+    
+    def __str__(self) -> str:
+        return f"{self.date_str}-S{self.shift_index}"
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+@dataclass
 class Berth:
     """The quay/berth where vessels are moored."""
 
@@ -87,10 +100,14 @@ class Problem:
     berth: Berth
     vessels: List[Vessel]
     cranes: List[Crane]
-    num_shifts: int  # Total number of shifts in the planning horizon
-    # Availability: Map shift_index -> List of crane_ids available
+    shifts: List[Shift]  # Specific shifts in the planning horizon
+    # Availability: Map shift_index (0 to N-1) -> List of crane_ids available
     crane_availability_per_shift: Dict[int, List[str]]
     forbidden_zones: List[ForbiddenZone] = field(default_factory=list)
+
+    @property
+    def num_shifts(self) -> int:
+        return len(self.shifts)
 
 
 @dataclass
