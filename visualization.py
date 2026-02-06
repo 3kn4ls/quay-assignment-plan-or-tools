@@ -28,6 +28,34 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
 
     vessels_by_name = {v.name: v for v in problem.vessels}
 
+    # Draw forbidden zones first
+    added_forbidden_label = False
+    for z in problem.forbidden_zones:
+        width = z.end_shift - z.start_shift
+        height = z.end_berth_position - z.start_berth_position
+        
+        # Only add label once for the legend
+        label = "Restricted Zone" if not added_forbidden_label else None
+        
+        rect = mpatches.Rectangle(
+            (z.start_shift, z.start_berth_position),
+            width, height,
+            hatch='//', facecolor='red', alpha=0.2, edgecolor='darkred',
+            label=label
+        )
+        ax.add_patch(rect)
+        
+        # Add text description
+        ax.text(
+            z.start_shift + width/2, z.start_berth_position + height/2,
+            z.description,
+            ha='center', va='center', color='darkred', 
+            fontsize=8, fontweight='bold', clip_on=True
+        )
+        
+        if label:
+            added_forbidden_label = True
+
     for idx, vs in enumerate(solution.vessel_solutions):
         vessel = vessels_by_name[vs.vessel_name]
         color = COLORS[idx % len(COLORS)]

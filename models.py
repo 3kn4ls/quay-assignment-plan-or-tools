@@ -15,7 +15,20 @@ class Vessel:
     etw: int  # Earliest shift the vessel can arrive (0-indexed)
     etc: int  # Desired completion shift (0-indexed, exclusive)
     available_shifts: list[int] | None = None  # If None, available all shifts
+    available_shifts: list[int] | None = None  # If None, available all shifts
     max_cranes: int = 3  # Max cranes that fit on the vessel
+
+
+@dataclass
+class ForbiddenZone:
+    """A zone on the quay that is restricted during certain shifts (e.g. maintenance)."""
+
+    start_berth_position: int
+    end_berth_position: int
+    start_shift: int
+    end_shift: int  # Exclusive
+    description: str = "Maintenance"
+
 
 
 @dataclass
@@ -50,7 +63,9 @@ class Problem:
     berth: Berth
     vessels: list[Vessel]
     num_shifts: int  # Total number of shifts in the planning horizon
+    num_shifts: int  # Total number of shifts in the planning horizon
     total_cranes_per_shift: list[int] | None = None  # Cranes available each shift
+    forbidden_zones: list[ForbiddenZone] = field(default_factory=list)
 
     def __post_init__(self):
         if self.total_cranes_per_shift is None:

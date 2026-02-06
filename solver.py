@@ -116,6 +116,32 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
 
     model.add_no_overlap_2d(x_intervals, y_intervals)
 
+    # --- 4.2b Forbidden Zones ---
+    # Ensure vessels do not overlap with forbidden zones (maintenance, etc.)
+    for i, v in enumerate(vessels):
+        for z in problem.forbidden_zones:
+            # Create fixed intervals for the forbidden zone
+            # Note: We use constant intervals here.
+            # Spatial interval for the zone
+            z_x_interval = model.new_fixed_size_interval_var(
+                z.start_berth_position, 
+                z.end_berth_position - z.start_berth_position, 
+                f"z_x_{z.description}_{i}"
+            )
+            # Temporal interval for the zone
+            z_y_interval = model.new_fixed_size_interval_var(
+                z.start_shift, 
+                z.end_shift - z.start_shift, 
+                f"z_y_{z.description}_{i}"
+            )
+            
+            # Add pairwise non-overlap constraint between this vessel and this zone
+            model.add_no_overlap_2d(
+                [x_intervals[i], z_x_interval], 
+                [y_intervals[i], z_y_interval]
+            )
+
+
     # --- 4.3 Temporal constraints ---
 
     # Vessel cannot start before its earliest arrival

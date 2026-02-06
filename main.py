@@ -2,7 +2,7 @@
 
 import os
 
-from models import Berth, Problem, Vessel
+from models import Berth, Problem, Vessel, ForbiddenZone
 from solver import solve
 from visualization import plot_solution, print_solution
 
@@ -85,6 +85,35 @@ def create_depth_constraint_example() -> Problem:
     )
 
 
+def create_forbidden_zone_example() -> Problem:
+    """Example with forbidden zones (maintenance, etc)."""
+    
+    # Start with standard problem
+    problem = create_example_problem()
+    
+    # Add restricted zones
+    # 1. Maintenance at start of berth (0-400m) for first 3 shifts
+    z1 = ForbiddenZone(
+        start_berth_position=0,
+        end_berth_position=400,
+        start_shift=0,
+        end_shift=3,
+        description="Quay Maint A"
+    )
+    
+    # 2. Dredging operations in middle (1000-1300m) for shifts 4-7
+    z2 = ForbiddenZone(
+        start_berth_position=1000,
+        end_berth_position=1300,
+        start_shift=4,
+        end_shift=7,
+        description="Dredging Ops"
+    )
+    
+    problem.forbidden_zones = [z1, z2]
+    return problem
+
+
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -93,12 +122,13 @@ def main():
     print("  Using Google OR-Tools CP-SAT")
     print("=" * 70)
 
-    # --- Example 2: Variable depth ---
-    print("\n>>> Example 2: Variable Depth Problem")
-    problem2 = create_depth_constraint_example()
-    solution2 = solve(problem2, time_limit_seconds=30)
-    print_solution(problem2, solution2)
-    plot_solution(problem2, solution2, os.path.join(OUTPUT_DIR, "gantt_result.png"))
+    # --- Example 3: Forbidden Zones ---
+    print("\n>>> Example 3: Forbidden Zones (Maintenance)")
+    problem3 = create_forbidden_zone_example()
+    solution3 = solve(problem3, time_limit_seconds=30)
+    print_solution(problem3, solution3)
+    plot_solution(problem3, solution3, os.path.join(OUTPUT_DIR, "gantt_forbidden.png"))
+
 
 
 if __name__ == "__main__":
