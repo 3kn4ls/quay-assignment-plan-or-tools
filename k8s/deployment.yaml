@@ -29,6 +29,8 @@ spec:
           env:
             - name: OUTPUT_DIR
               value: /data/output
+            - name: BASE_HREF
+              value: /quay-assignment-plan-or-tools/
           volumeMounts:
             - name: data
               mountPath: /data

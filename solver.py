@@ -401,7 +401,7 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     W_TURNAROUND = 500  # High priority to finish fast
     W_WAITING = 50 
     W_MAKESPAN = 100
-    W_CRANES = 0  # Do not penalize using more cranes if it helps speed
+    W_CRANES = -100  # Reward using more cranes (assign max available)
 
     model.minimize(
         W_TURNAROUND * total_turnaround

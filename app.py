@@ -307,12 +307,12 @@ def run_solver_thread(config):
 
 @app.route("/")
 def editor():
-    return render_template("editor.html")
+    return render_template("editor.html", base_href=os.environ.get("BASE_HREF", "/"))
 
 
 @app.route("/results")
 def results():
-    return render_template("results.html")
+    return render_template("results.html", base_href=os.environ.get("BASE_HREF", "/"))
 
 
 @app.route("/api/problem", methods=["GET"])
