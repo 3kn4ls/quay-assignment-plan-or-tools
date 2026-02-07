@@ -34,7 +34,7 @@
 <nav class="navbar navbar-dark px-4 py-2">
   <span class="navbar-brand mb-0 h5">BAP+QCAP Port Terminal Optimizer</span>
   <div>
-    <a href="/results" class="btn btn-outline-light btn-sm me-2">Ver Resultados</a>
+    <a href="results" class="btn btn-outline-light btn-sm me-2">Ver Resultados</a>
     <button class="btn btn-warning btn-sm" onclick="saveProblem()">Guardar</button>
     <button class="btn btn-success btn-sm ms-1" onclick="runSolver()">Ejecutar Solver</button>
   </div>
@@ -223,7 +223,7 @@ let currentConfig = null;
 
 // ─── Load data on page load ───
 document.addEventListener('DOMContentLoaded', () => {
-  fetch('/api/problem').then(r => r.json()).then(config => {
+  fetch('api/problem').then(r => r.json()).then(config => {
     currentConfig = config;
     populateEditor(config);
   });
@@ -439,7 +439,7 @@ function addZoneRow(z) {
 // ─── Save ───
 function saveProblem() {
   const cfg = collectConfig();
-  fetch('/api/problem', {
+  fetch('api/problem', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(cfg)
@@ -453,13 +453,13 @@ function saveProblem() {
 function runSolver() {
   const cfg = collectConfig();
   // Save first
-  fetch('/api/problem', {
+  fetch('api/problem', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(cfg)
   }).then(() => {
     // Start solver
-    return fetch('/api/solve', { method: 'POST' });
+    return fetch('api/solve', { method: 'POST' });
   }).then(r => r.json()).then(data => {
     if (data.ok) {
       showOverlay();
@@ -485,7 +485,7 @@ function closeOverlay() {
 }
 
 function pollStatus() {
-  fetch('/api/status').then(r => r.json()).then(state => {
+  fetch('api/status').then(r => r.json()).then(state => {
     if (state.status === 'running') {
       document.getElementById('solverMsg').textContent = state.message || 'Procesando...';
       setTimeout(pollStatus, 2000);

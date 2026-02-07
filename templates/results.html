@@ -27,7 +27,7 @@
 <nav class="navbar navbar-dark px-4 py-2">
   <span class="navbar-brand mb-0 h5">BAP+QCAP Port Terminal Optimizer</span>
   <div>
-    <a href="/" class="btn btn-outline-light btn-sm">Editar Datos</a>
+    <a href="../" class="btn btn-outline-light btn-sm">Editar Datos</a>
   </div>
 </nav>
 
@@ -94,7 +94,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function loadResults() {
-  fetch('/api/status').then(r => r.json()).then(state => {
+  fetch('api/status').then(r => r.json()).then(state => {
     const badge = document.getElementById('statusBadge');
     const msg = document.getElementById('statusMsg');
 
@@ -120,9 +120,9 @@ function loadResults() {
 
     // Load images with cache-busting
     const ts = Date.now();
-    loadImage('imgGantt', 'imgGanttMsg', `/output/gantt_forbidden_cranes.png?t=${ts}`);
-    loadImage('imgCranes', 'imgCranesMsg', `/output/cranes_schedule.png?t=${ts}`);
-    loadImage('imgExec', 'imgExecMsg', `/output/vessel_execution_summary.png?t=${ts}`);
+    loadImage('imgGantt', 'imgGanttMsg', `output/gantt_forbidden_cranes.png?t=${ts}`);
+    loadImage('imgCranes', 'imgCranesMsg', `output/cranes_schedule.png?t=${ts}`);
+    loadImage('imgExec', 'imgExecMsg', `output/vessel_execution_summary.png?t=${ts}`);
 
     if (state.status === 'running') {
       setTimeout(loadResults, 3000);

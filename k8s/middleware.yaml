@@ -1,0 +1,9 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: quay-solver-stripprefix
+  namespace: quay-solver
+spec:
+  stripPrefix:
+    prefixes:
+      - /quay-assignment-plan-or-tools

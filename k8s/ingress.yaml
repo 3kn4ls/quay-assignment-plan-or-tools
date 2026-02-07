@@ -6,18 +6,23 @@ metadata:
   labels:
     app.kubernetes.io/name: quay-solver
   annotations:
-    # Traefik (ingress por defecto en k3s)
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: authelia-authelia@kubernetescrd,quay-solver-quay-solver-stripprefix@kubernetescrd
 spec:
+  ingressClassName: traefik
   rules:
-    # Cambiar por tu dominio/IP real, p.ej: quay.tudominio.local
-    - host: quay.local
+    - host: northr3nd.duckdns.org
       http:
         paths:
-          - path: /
+          - path: /quay-assignment-plan-or-tools
             pathType: Prefix
             backend:
               service:
                 name: quay-solver
                 port:
                   name: http
+  tls:
+    - hosts:
+        - northr3nd.duckdns.org
+      secretName: northr3nd-tls-cert
