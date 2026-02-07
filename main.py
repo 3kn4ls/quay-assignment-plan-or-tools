@@ -271,8 +271,9 @@ def main():
     plot_solution(problem3, solution3, os.path.join(OUTPUT_DIR, "gantt_forbidden_cranes.png"))
     
     # New Crane Schedule Plot
-    from visualization import plot_crane_schedule
+    from visualization import plot_crane_schedule, plot_vessel_execution_gantt
     plot_crane_schedule(problem3, solution3, os.path.join(OUTPUT_DIR, "cranes_schedule.png"))
+    plot_vessel_execution_gantt(problem3, solution3, os.path.join(OUTPUT_DIR, "vessel_execution_summary.png"))
 
 
 if __name__ == "__main__":

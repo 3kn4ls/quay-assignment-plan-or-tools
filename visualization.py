@@ -417,3 +417,180 @@ def print_solution(problem: Problem, solution: Solution):
         # Just use raw count for now
         bar = "#" * bar_len
         print(f"  Shift {t}: {used_count}/{available_count} [{bar}]")
+
+
+def plot_vessel_execution_gantt(problem: Problem, solution: Solution, output_path: str = "vessel_execution.png"):
+    """
+    Generate a Gantt chart focused on Vessel execution details.
+    
+    Y-axis: Vessels
+    X-axis: Time (Shifts)
+    Bar Content: Moves performed in that shift by which cranes.
+    Annotations: Remaining workload after shift.
+    Final Marker: Completion time (ETC).
+    """
+    if not solution.vessel_solutions:
+        print("No solution to plot.")
+        return
+
+    # Sort vessels by arrival time (or start shift) for cleaner Gantt
+    sorted_solutions = sorted(solution.vessel_solutions, key=lambda x: x.start_shift)
+    vessels = [v for v in problem.vessels]
+    v_map = {v.name: v for v in vessels}
+    c_map = {c.id: c for c in problem.cranes}
+
+    fig, ax = plt.subplots(figsize=(16, len(sorted_solutions) * 1.5 + 2))
+    
+    # Define colors
+    import matplotlib.cm as cm
+    colors = cm.get_cmap('tab20', len(sorted_solutions))
+    
+    y_labels = []
+    y_ticks = []
+    
+    # Track max shift for axis
+    max_active_shift = 0
+
+    for idx, sol in enumerate(sorted_solutions):
+        v = v_map[sol.vessel_name]
+        y_pos = idx
+        y_labels.append(f"{v.name}\n(Tot: {v.workload})")
+        y_ticks.append(y_pos)
+        
+        cumulative_moves = 0
+        executed_shifts = sorted(sol.assigned_cranes.keys())
+        
+        if not executed_shifts:
+            continue
+            
+        final_shift = sol.end_shift - 1 # inclusive index of last active shift
+        # Actually end_shift is exclusive in solution usually? 
+        # VesselSolution def says: start_shift, end_shift (presumably exclusive based on range usage)
+        # But let's check solver output logic. 
+        # range(vs.start_shift, vs.end_shift) is used in plot_solution.
+        # So last active shift is indeed end_shift - 1.
+        
+        max_active_shift = max(max_active_shift, sol.end_shift)
+
+        # Draw arrival marker
+        ax.plot(v.arrival_shift_index + v.arrival_fraction, y_pos, 'g>', markersize=10, label='Arrival' if idx==0 else "")
+
+        for seq_idx, t in enumerate(executed_shifts):
+            cranes = sol.assigned_cranes[t]
+            if not cranes: continue
+            
+            shift_moves = 0
+            crane_details = []
+            
+            for c_id in cranes:
+                if c_id not in c_map: continue
+                c = c_map[c_id]
+                
+                # Determine limit
+                limit = c.max_productivity
+                if v.productivity_preference.name == "MIN": limit = c.min_productivity
+                elif v.productivity_preference.name == "INTERMEDIATE": limit = (c.min_productivity + c.max_productivity) // 2
+                
+                # Arrival fraction impact
+                if t == v.arrival_shift_index:
+                    limit = int(limit * v.arrival_fraction)
+                
+                # Logic for Moves:
+                # If t < final_shift: Full Capacity used
+                # If t == final_shift: Remainder used (shared among cranes)
+                
+                moves_val = 0
+                if t < sol.end_shift - 1:
+                    moves_val = limit
+                else:
+                    # Last shift logic: We don't have per-crane moves from Solver output yet (only lists).
+                    # We approximate: Total remaining / num_cranes? 
+                    # Or just: Sum of full capacities is upper bound.
+                    # We will calculate "Shift Total Moves" separately.
+                    moves_val = limit # Provisional
+                    
+                shift_moves += moves_val
+            
+            # Correction for Final Shift to exactly match workload
+            if t == sol.end_shift - 1:
+                remaining_needed = max(0, v.workload - cumulative_moves)
+                shift_moves = remaining_needed
+            
+            cumulative_moves += shift_moves
+            remain = max(0, v.workload - cumulative_moves)
+            
+            # Plot Bar for this shift
+            # Width = 1 shift (or fraction if arrival/departure?)
+            # Simplified: Width 1.
+            bar_start = t
+            bar_width = 1.0
+            
+            # If arrival shift, start later?
+            if t == v.arrival_shift_index:
+                bar_start = t + (1 - v.arrival_fraction)
+                bar_width = v.arrival_fraction
+            
+            # If final shift, maybe end earlier?
+            # We don't know exact finish time within shift without better solver output.
+            # Assuming full shift used for visualization unless very small moves.
+            
+            ax.barh(
+                y_pos, width=bar_width, left=bar_start, height=0.6,
+                color=colors(idx), edgecolor='black', alpha=0.8
+            )
+            
+            # Annotate Moves (Center)
+            ax.text(
+                bar_start + bar_width/2, y_pos, 
+                f"{int(shift_moves)}", 
+                ha='center', va='center', fontsize=9, color='white', fontweight='bold'
+            )
+            
+            # Annotate Remain (Bottom Right)
+            ax.text(
+                bar_start + bar_width, y_pos - 0.35, 
+                f"Rem:{int(remain)}", 
+                ha='right', va='top', fontsize=8, color='black', fontweight='bold'
+            )
+            
+            # Annotate Cranes (Top)
+            # Shorten names? C1, C2...
+            c_str = ",".join([cid.split('-')[-1] for cid in cranes])
+            ax.text(
+                 bar_start + bar_width/2, y_pos + 0.32, 
+                 f"[{c_str}]", 
+                 ha='center', va='bottom', fontsize=7, color='blue'
+            )
+
+        # Mark ETC / Completion
+        completion_time = sol.end_shift 
+        # Draw finish line
+        ax.plot([completion_time, completion_time], [y_pos-0.4, y_pos+0.4], 'r-', linewidth=2)
+        ax.text(completion_time + 0.1, y_pos, f"Done (S{completion_time})", va='center', color='red', fontsize=9, fontweight='bold')
+
+    # Formatting
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels)
+    ax.set_ylabel("Vessels")
+    ax.set_xlabel("Shifts (Time)")
+    ax.set_title("Vessel Execution Summary: Moves per Shift & Burndown")
+    ax.grid(True, axis='x', linestyle='--', alpha=0.5)
+    
+    # Set X ticks
+    ax.set_xticks(range(int(max_active_shift) + 3))
+    
+    # Add legend manually?
+    # Legend for bar colors is vessel - redundant names are on Y axis.
+    # Arrival/Departure markers legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='>', color='w', markerfacecolor='g', label='Arrival', markersize=10),
+        Line2D([0], [0], color='r', lw=2, label='Completion'),
+        mpatches.Patch(edgecolor='black', facecolor='gray', alpha=0.5, label='Active Work (Bar)')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right')
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    print(f"Vessel Execution Gantt saved to {output_path}")
+    plt.close()
