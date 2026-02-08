@@ -3,7 +3,7 @@
 import os
 from typing import List, Dict
 
-from models import Berth, Problem, Vessel, ForbiddenZone, Crane, CraneType, ProductivityMode, Shift
+from models import Berth, Problem, Vessel, ForbiddenZone, Crane, CraneType, ProductivityMode, Shift, YardQuayZone, YardQuayZonePreference
 import datetime
 
 from solver import solve
@@ -104,28 +104,38 @@ def create_example_problem() -> Problem:
 
     # Note: Shift duration is approx 6h (4 shifts/day)
     vessels = [
-        # V1: Arrives at start of Shift 0.
+        # V1: Arrives at start of Shift 0. Prefers Zone B (500-1000) heavily.
         Vessel(name="V1-MSC", workload=800, loa=300, draft=14.0, 
                arrival_time=get_dt(0, 0), 
-               max_cranes=4, productivity_preference=ProductivityMode.MAX),
+               max_cranes=4, productivity_preference=ProductivityMode.MAX,
+               target_zones=[
+                   YardQuayZonePreference(yard_quay_zone_id=2, volume=600), # Major cargo in Zone 2
+                   YardQuayZonePreference(yard_quay_zone_id=1, volume=200)  # Some in Zone 1
+               ]),
         
-        # V2: Arrives 2 hours into Shift 0.
+        # V2: Arrives 2 hours into Shift 0. Prefers Zone A (0-500)
         Vessel(name="V2-MAERSK", workload=600, loa=250, draft=13.0, 
                arrival_time=get_dt(0, 2), 
-               max_cranes=3, productivity_preference=ProductivityMode.INTERMEDIATE),
+               max_cranes=3, productivity_preference=ProductivityMode.INTERMEDIATE,
+               target_zones=[
+                   YardQuayZonePreference(yard_quay_zone_id=1, volume=500),
+                   YardQuayZonePreference(yard_quay_zone_id=2, volume=100)
+               ]),
         
         Vessel(name="V3-COSCO", workload=500, loa=280, draft=14.5, 
                arrival_time=get_dt(0, 0), 
-               max_cranes=3, productivity_preference=ProductivityMode.MIN),
+               max_cranes=3, productivity_preference=ProductivityMode.MIN,
+               target_zones=[YardQuayZonePreference(yard_quay_zone_id=3, volume=500)]),
                
         # Shift 1 arrivals
         Vessel(name="V4-CMA", workload=400, loa=200, draft=12.0, 
                arrival_time=get_dt(1, 0), 
-               max_cranes=3), 
+               max_cranes=3, target_zones=[YardQuayZonePreference(yard_quay_zone_id=4, volume=400)]), 
         
         Vessel(name="V5-HAPAG", workload=350, loa=180, draft=11.0, 
                arrival_time=get_dt(1, 0), 
-               max_cranes=2, productivity_preference=ProductivityMode.MAX),
+               max_cranes=2, productivity_preference=ProductivityMode.MAX,
+               target_zones=[YardQuayZonePreference(yard_quay_zone_id=2, volume=350)]),
                
         # Shift 2 arrivals
         Vessel(name="V6-ONE", workload=700, loa=290, draft=13.5, 
@@ -134,7 +144,8 @@ def create_example_problem() -> Problem:
                
         Vessel(name="V7-EVERGREEN", workload=900, loa=330, draft=15.0, 
                arrival_time=get_dt(2, 0), 
-               max_cranes=4, productivity_preference=ProductivityMode.MAX),
+               max_cranes=4, productivity_preference=ProductivityMode.MAX,
+               target_zones=[YardQuayZonePreference(yard_quay_zone_id=3, volume=900)]),
                
         # Shift 3
         Vessel(name="V8-HMM", workload=450, loa=220, draft=12.5, 
@@ -239,14 +250,23 @@ def create_example_problem() -> Problem:
         )
     ]
 
+    yard_zones = [
+        YardQuayZone(id=1, name="Zone A", start_dist=0, end_dist=500),
+        YardQuayZone(id=2, name="Zone B", start_dist=500, end_dist=1000),
+        YardQuayZone(id=3, name="Zone C", start_dist=1000, end_dist=1500),
+        YardQuayZone(id=4, name="Zone D", start_dist=1500, end_dist=2000),
+    ]
+
     return Problem(
         berth=berth,
         vessels=vessels,
         cranes=cranes,
         shifts=shifts,
         crane_availability_per_shift=availability,
-        forbidden_zones=forbidden_zones
+        forbidden_zones=forbidden_zones,
+        yard_quay_zones=yard_zones
     )
+
 
 
 def main():

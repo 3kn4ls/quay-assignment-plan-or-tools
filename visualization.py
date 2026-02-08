@@ -63,6 +63,35 @@ def plot_solution(problem: Problem, solution: Solution, output_path: str = "gant
         if label:
             added_forbidden_label = True
 
+    # Draw Yard Quay Zones (New)
+    # These are static zones along the Y-axis (Berth Position), covering all time.
+    # We'll draw them as subtle background blocks.
+    yard_colors = ["#e0f7fa", "#e8f5e9", "#fff3e0", "#f3e5f5"] # Light cyan, green, orange, purple
+    for z_idx, yz in enumerate(problem.yard_quay_zones):
+        y_start = yz.start_dist
+        y_height = yz.end_dist - yz.start_dist
+        
+        # Color cycle
+        color = yard_colors[z_idx % len(yard_colors)]
+        
+        # Draw explicit rectangle across the entire time horizon
+        rect = mpatches.Rectangle(
+            (0, y_start),
+            problem.num_shifts, y_height,
+            facecolor=color, alpha=0.3, edgecolor=None,
+            zorder=0 # Behind everything
+        )
+        ax.add_patch(rect)
+        
+        # Add label on the far right or left
+        ax.text(
+            0.2, y_start + y_height/2,
+            f"Zone {yz.name}\n(ID:{yz.id})",
+            ha='left', va='center', color='black', alpha=0.5,
+            fontsize=7, fontweight='bold', rotation=0,
+            zorder=1
+        )
+
     for idx, vs in enumerate(solution.vessel_solutions):
         vessel = vessels_by_name[vs.vessel_name]
         color = COLORS[idx % len(COLORS)]

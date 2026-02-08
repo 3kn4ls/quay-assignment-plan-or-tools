@@ -79,6 +79,9 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     # Active indicator (needed for spatial/temporal)
     active = {}
     
+    is_after_start_dict = {}
+    is_before_end_dict = {}
+
     for i, v in enumerate(vessels):
         # 1. Variables - Time
         # ====================
@@ -89,6 +92,10 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
         end[i] = model.new_int_var(min_start + 1, T, f"end_{v.name}")
         duration[i] = model.new_int_var(1, T, f"dur_{v.name}")
         
+        # KEY CONSTRAINT: Start shift MUST be >= Arrival shift
+        # This prevents vessels from starting before they arrive.
+        model.add(start[i] >= min_start)
+        
         model.add(end[i] == start[i] + duration[i])
         
         # Create active booleans for each shift
@@ -98,6 +105,10 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
             # Reification: active <=> start <= t < end
             is_after_start = model.new_bool_var(f"{v.name}_after_start_{t}")
             is_before_end = model.new_bool_var(f"{v.name}_before_end_{t}")
+            
+            is_after_start_dict[i, t] = is_after_start # STORE IT
+            is_before_end_dict[i, t] = is_before_end   # STORE IT
+
             model.add(start[i] <= t).only_enforce_if(is_after_start)
             model.add(start[i] > t).only_enforce_if(is_after_start.Not())
             model.add(end[i] > t).only_enforce_if(is_before_end)
@@ -116,8 +127,11 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
             
             for i, v in enumerate(vessels):
                 # Optimization: check arrival
+                # Ensure no moves are planned before arrival
                 if t < (v.arrival_shift_index if v.arrival_shift_index >= 0 else 0):
-                    continue
+                    # Force moves to 0 if shift is before arrival
+                    # This is redundant if start[i] >= arrival constraint works, but good for safety
+                    continue 
                 
                 # Max prod limit logic
                 limit = c.max_productivity
@@ -135,6 +149,14 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
                     # Link to active: if moves > 0, vessel must be active
                     # active=0 => moves=0
                     model.add(mv == 0).only_enforce_if(active[i, t].Not())
+                    
+                    
+                    # ALSO: If this shift is BEFORE vessel start, moves MUST be 0
+                    if (i, t) in is_after_start_dict:
+                        # is_after_start is True if start <= t.
+                        # So if is_after_start is False => start > t => shift t is BEFORE start.
+                        # In that case, moves MUST be 0.
+                        model.add(mv == 0).only_enforce_if(is_after_start_dict[i, t].Not())
 
     # =============================================
     # CONSTRAINTS
@@ -385,15 +407,9 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
 
     # Total crane usage (number of crane-shifts)
     # Calculate active cranes for objective
-    # crane_active[c, i, t] was not explicitly stored in full dict during Variable creation phase in my logic update?
-    # Let's check variables section. Ah, I created `moves` but maybe not `crane_active` globally accessible here.
-    # Re-derive crane_active boolean terms from moves > 0 if needed for objective.
-    
     crane_active_vars = []
     for (c, i, t), m_var in moves.items():
         # Create boolean indicator if not exists
-        # Actually simplest to just weight 'moves' if we want speed?
-        # But we want total *assignments* count.
         b_var = model.new_bool_var(f"active_{c}_{i}_{t}")
         model.add(m_var > 0).only_enforce_if(b_var)
         model.add(m_var == 0).only_enforce_if(b_var.Not())
@@ -405,16 +421,75 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     else:
         model.add(total_cranes_used == 0)
 
-    W_TURNAROUND = 500  # High priority to finish fast
-    W_WAITING = 50 
+    # --- Yard Zone Alignment (New) ---
+    total_yard_distance = model.new_int_var(0, berth.length * n, "total_yard_distance")
+    yard_dist_terms = []
+    
+    if problem.solver_rules.get("enable_yard_preferences", True):
+        # Pre-index yard zones
+        yard_zone_map = {z.id: z for z in problem.yard_quay_zones}
+
+        for i, v in enumerate(vessels):
+            if v.target_zones:
+                # Find best zone by volume
+                best_pref = max(v.target_zones, key=lambda x: x.volume)
+                if best_pref.yard_quay_zone_id in yard_zone_map:
+                    zone = yard_zone_map[best_pref.yard_quay_zone_id]
+                    zone_center = (zone.start_dist + zone.end_dist) // 2
+                    
+                    # Vessel Center = pos[i] + v.loa // 2
+                    # Distance = abs((pos[i] + v.loa // 2) - zone_center)
+                    
+                    dist_var = model.new_int_var(0, berth.length, f"yard_dist_{v.name}")
+                    
+                    v_center_expr = pos[i] + (v.loa // 2)
+                    
+                    model.add(dist_var >= v_center_expr - zone_center)
+                    model.add(dist_var >= zone_center - v_center_expr)
+                    
+                    yard_dist_terms.append(dist_var)
+
+    if yard_dist_terms:
+         model.add(total_yard_distance == sum(yard_dist_terms))
+    else:
+         model.add(total_yard_distance == 0)
+
+
+    # --- WEIGHTS (Priorities) ---
+    # The user priority is: 
+    # 1. Start exactly at ETW (Don't delay) -> Very high W_START_DELAY
+    # 2. Finish as fast as possible -> High W_TURNAROUND
+    # 3. Use crane capacity efficiently -> W_CRANES
+    # 4. Yard alignment (Soft preference) -> Low W_YARD_DIST (Tie-breaker)
+    
+    W_START_DELAY = 5000  # HUGE Penalty: 1 shift delay costs more than ANY yard distance deviation (max ~1000)
+    W_TURNAROUND = 500    # High priority to minimize duration once started
+    W_WAITING = 0         # Unused now
     W_MAKESPAN = 100
-    W_CRANES = -100  # Reward using more cranes (assign max available)
+    W_CRANES = -100       # Reward for high productivity
+    W_YARD_DIST = 1       # 1m deviation = 1 point cost. Max ~1000. 
+                          # Since W_START_DELAY=5000, 1 shift delay > 5000 > 1000 distance penalty.
+                          # This ensures vessel NEVER delays just for position.
+
+    # Calculate Start Delay
+    total_start_delay = model.new_int_var(0, T * n, "total_start_delay")
+    start_delay_terms = []
+    
+    for i, v in enumerate(vessels):
+        ref_start = v.arrival_shift_index if v.arrival_shift_index >= 0 else 0
+        delay = model.new_int_var(0, T, f"start_delay_{v.name}")
+        model.add(delay == start[i] - ref_start)
+        start_delay_terms.append(delay)
+        
+    model.add(total_start_delay == sum(start_delay_terms))
 
     model.minimize(
         W_TURNAROUND * total_turnaround
-        + W_WAITING * total_waiting_time
+        # + W_WAITING * total_waiting_time 
+        + W_START_DELAY * total_start_delay
         + W_MAKESPAN * makespan
         + W_CRANES * total_cranes_used
+        + W_YARD_DIST * total_yard_distance
     )
 
     # =============================================

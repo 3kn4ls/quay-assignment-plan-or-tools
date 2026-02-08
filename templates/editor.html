@@ -118,6 +118,7 @@
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-availability">Disponibilidad Gruas</a>
       </li>
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-zones">Zonas Restringidas</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-yard-zones">Zonas Patio</a></li>
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-rules">Reglas</a></li>
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-solver">Solver</a></li>
     </ul>
@@ -186,6 +187,7 @@
                   <th>Hora offset</th>
                   <th>Max Gruas</th>
                   <th>Productividad</th>
+                  <th>Zonas (ID:Vol)</th>
                   <th></th>
                 </tr>
               </thead>
@@ -266,6 +268,31 @@
         </div>
       </div>
 
+      <!-- TAB: Yard Quay Zones (NEW) -->
+      <div class="tab-pane fade" id="tab-yard-zones">
+        <div class="card">
+          <div class="card-header bg-info text-white">Zonas de Patio (Quay Zones)</div>
+          <div class="card-body">
+            <p class="text-muted small">Defina las zonas del patio asociadas al muelle. Los buques pueden preferir
+              atracar cerca de estas zonas.</p>
+            <table class="table table-sm table-bordered table-hover" id="yardZonesTable">
+              <thead class="table-light">
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Inicio (m)</th>
+                  <th>Fin (m)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <button class="btn btn-outline-info btn-sm btn-add-row" onclick="addYardZoneRow()">+ Agregar zona de
+              patio</button>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- TAB: Rules -->
@@ -274,36 +301,78 @@
         <div class="card-header bg-dark text-white">Reglas del Solver</div>
         <div class="card-body">
           <p class="text-muted small">Seleccione las restricciones que desea aplicar en la optimizacion.</p>
+          <!-- Hard Constraints - Spatial -->
+          <h6 class="text-primary mt-3">Restricciones Espaciales (Hard Constraints)</h6>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="rule_forbidden_zones" checked>
-            <label class="form-check-label" for="rule_forbidden_zones">Habilitar Zonas Restringidas (Forbidden
-              Zones)</label>
-          </div>
-          <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" id="rule_crane_capacity" checked>
-            <label class="form-check-label" for="rule_crane_capacity">Restriccion de Capacidad de Gruas (Shifting Gang
-              limit)</label>
-          </div>
-          <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" id="rule_max_cranes" checked>
-            <label class="form-check-label" for="rule_max_cranes">Maximo de Gruas por Buque</label>
-          </div>
-          <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" id="rule_min_cranes_on_arrival" checked>
-            <label class="form-check-label" for="rule_min_cranes_on_arrival">Minimo 1 Grua si Buque Activo</label>
+            <label class="form-check-label" for="rule_forbidden_zones">
+              <strong>Zonas Restringidas</strong>
+              <br><span class="text-muted small">Evita que los buques atraquen en zonas bloqueadas (mantenimiento,
+                dragado).</span>
+            </label>
           </div>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="rule_crane_reach" checked>
-            <label class="form-check-label" for="rule_crane_reach">Restriccion de Alcance de Gruas</label>
+            <label class="form-check-label" for="rule_crane_reach">
+              <strong>Alcance de Gruas</strong>
+              <br><span class="text-muted small">Asegura que las gruas asignadas alcancen fisicamente la posicion del
+                buque.</span>
+            </label>
           </div>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="rule_sts_non_crossing" checked>
-            <label class="form-check-label" for="rule_sts_non_crossing">No Cruce de Gruas STS</label>
+            <label class="form-check-label" for="rule_sts_non_crossing">
+              <strong>No Cruce de Gruas STS</strong>
+              <br><span class="text-muted small">Evita que las gruas STS se crucen fisicamente (mantiene el
+                orden).</span>
+            </label>
+          </div>
+
+          <!-- Hard Constraints - Operational -->
+          <h6 class="text-primary mt-3">Restricciones Operativas (Hard Constraints)</h6>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_crane_capacity" checked>
+            <label class="form-check-label" for="rule_crane_capacity">
+              <strong>Capacidad Maxima de Grua</strong>
+              <br><span class="text-muted small">No exceder la productividad maxima de una grua por turno.</span>
+            </label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_max_cranes" checked>
+            <label class="form-check-label" for="rule_max_cranes">
+              <strong>Maximo de Gruas por Buque</strong>
+              <br><span class="text-muted small">Limita el numero de gruas simultaneas en un buque.</span>
+            </label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_min_cranes_on_arrival" checked>
+            <label class="form-check-label" for="rule_min_cranes_on_arrival">
+              <strong>Minimo 1 Grua Activa</strong>
+              <br><span class="text-muted small">Si un buque esta atracado y activo, debe tener al menos una grua
+                trabajando.</span>
+            </label>
           </div>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" id="rule_shifting_gang" checked>
-            <label class="form-check-label" for="rule_shifting_gang">Shifting Gang (Capacidad Completa obligatoria en
-              turnos intermedios)</label>
+            <label class="form-check-label" for="rule_shifting_gang">
+              <strong>Shifting Gang (Productividad Continua)</strong>
+              <br><span class="text-muted small">Obliga a usar la capacidad completa de la grua en turnos intermedios
+                (sin
+                paradas parciales).</span>
+            </label>
+          </div>
+
+          <hr>
+
+          <!-- Soft Constraints / Objectives -->
+          <h6 class="text-success mt-3">Preferencias y Objetivos (Soft Constraints)</h6>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_yard_preferences" checked>
+            <label class="form-check-label" for="rule_yard_preferences">
+              <strong>Preferencia Zona Patio Ideal</strong>
+              <br><span class="text-muted small">Intenta atracar el buque lo mas cerca posible de su zona de carga
+                principal.</span>
+            </label>
           </div>
         </div>
       </div>
@@ -383,6 +452,11 @@
       zBody.innerHTML = '';
       (cfg.forbidden_zones || []).forEach(z => addZoneRow(z));
 
+      // Yard zones
+      const yBody = document.querySelector('#yardZonesTable tbody');
+      yBody.innerHTML = '';
+      (cfg.yard_quay_zones || []).forEach(z => addYardZoneRow(z));
+
       // Rules
       const rules = cfg.solver_rules || {};
       document.getElementById('rule_forbidden_zones').checked = rules.enable_forbidden_zones !== false;
@@ -392,6 +466,7 @@
       document.getElementById('rule_crane_reach').checked = rules.enable_crane_reach !== false;
       document.getElementById('rule_sts_non_crossing').checked = rules.enable_sts_non_crossing !== false;
       document.getElementById('rule_shifting_gang').checked = rules.enable_shifting_gang !== false;
+      document.getElementById('rule_yard_preferences').checked = rules.enable_yard_preferences !== false;
 
       // Solver
       document.getElementById('solverTimeLimit').value = (cfg.solver_settings || {}).time_limit_seconds || 60;
@@ -425,6 +500,18 @@
       document.querySelectorAll('#vesselsTable tbody tr').forEach(tr => {
         const inputs = tr.querySelectorAll('input');
         const selects = tr.querySelectorAll('select');
+
+        let targetZones = [];
+        const zoneStr = inputs[7].value;
+        if (zoneStr) {
+          zoneStr.split(',').forEach(part => {
+            const [zid, vol] = part.split(':').map(s => s.trim());
+            if (zid && vol) {
+              targetZones.push({ yard_quay_zone_id: parseInt(zid), volume: parseFloat(vol) });
+            }
+          });
+        }
+
         cfg.vessels.push({
           name: inputs[0].value,
           workload: parseInt(inputs[1].value) || 0,
@@ -433,7 +520,8 @@
           arrival_shift: parseInt(inputs[4].value) || 0,
           arrival_hour_offset: parseInt(inputs[5].value) || 0,
           max_cranes: parseInt(inputs[6].value) || 3,
-          productivity_preference: selects[0].value
+          productivity_preference: selects[0].value,
+          target_zones: targetZones
         });
       });
 
@@ -476,6 +564,18 @@
         });
       });
 
+      // Yard zones
+      cfg.yard_quay_zones = [];
+      document.querySelectorAll('#yardZonesTable tbody tr').forEach(tr => {
+        const inputs = tr.querySelectorAll('input');
+        cfg.yard_quay_zones.push({
+          id: parseInt(inputs[0].value) || 0,
+          name: inputs[1].value,
+          start_dist: parseInt(inputs[2].value) || 0,
+          end_dist: parseInt(inputs[3].value) || 0
+        });
+      });
+
       // Rules
       cfg.solver_rules = {
         enable_forbidden_zones: document.getElementById('rule_forbidden_zones').checked,
@@ -484,7 +584,8 @@
         enable_min_cranes_on_arrival: document.getElementById('rule_min_cranes_on_arrival').checked,
         enable_crane_reach: document.getElementById('rule_crane_reach').checked,
         enable_sts_non_crossing: document.getElementById('rule_sts_non_crossing').checked,
-        enable_shifting_gang: document.getElementById('rule_shifting_gang').checked
+        enable_shifting_gang: document.getElementById('rule_shifting_gang').checked,
+        enable_yard_preferences: document.getElementById('rule_yard_preferences').checked
       };
 
       // Solver settings
@@ -513,6 +614,12 @@
       const tbody = document.querySelector('#vesselsTable tbody');
       const tr = document.createElement('tr');
       const pref = v ? v.productivity_preference : 'INTERMEDIATE';
+
+      let zonesStr = "";
+      if (v && v.target_zones) {
+        zonesStr = v.target_zones.map(z => `${z.yard_quay_zone_id}:${z.volume}`).join(', ');
+      }
+
       tr.innerHTML = `
     <td><input type="text" class="form-control form-control-sm" value="${v ? v.name : ''}"></td>
     <td><input type="number" class="form-control form-control-sm" value="${v ? v.workload : 500}" min="0"></td>
@@ -528,6 +635,7 @@
         <option value="MAX" ${pref === 'MAX' ? 'selected' : ''}>MAX</option>
       </select>
     </td>
+    <td><input type="text" class="form-control form-control-sm" value="${zonesStr}" placeholder="ID:Vol, ID:Vol"></td>
     <td><button class="btn btn-outline-danger btn-sm btn-remove-row" onclick="removeRow(this)">X</button></td>
   `;
       tbody.appendChild(tr);
@@ -575,6 +683,19 @@
     <td><input type="number" class="form-control form-control-sm" value="${z ? z.end_berth_position : 0}" min="0"></td>
     <td><input type="number" class="form-control form-control-sm" value="${z ? z.start_shift : 0}" min="0" style="width:60px"></td>
     <td><input type="number" class="form-control form-control-sm" value="${z ? z.end_shift : 0}" min="0" style="width:60px"></td>
+    <td><button class="btn btn-outline-danger btn-sm btn-remove-row" onclick="removeRow(this)">X</button></td>
+  `;
+      tbody.appendChild(tr);
+    }
+
+    function addYardZoneRow(z) {
+      const tbody = document.querySelector('#yardZonesTable tbody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+    <td><input type="number" class="form-control form-control-sm" value="${z ? z.id : ''}" min="1" style="width:60px"></td>
+    <td><input type="text" class="form-control form-control-sm" value="${z ? z.name : ''}"></td>
+    <td><input type="number" class="form-control form-control-sm" value="${z ? z.start_dist : 0}" min="0"></td>
+    <td><input type="number" class="form-control form-control-sm" value="${z ? z.end_dist : 0}" min="0"></td>
     <td><button class="btn btn-outline-danger btn-sm btn-remove-row" onclick="removeRow(this)">X</button></td>
   `;
       tbody.appendChild(tr);

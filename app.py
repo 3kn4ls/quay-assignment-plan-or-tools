@@ -50,25 +50,31 @@ def get_default_config():
         "vessels": [
             {"name": "V1-MSC", "workload": 800, "loa": 300, "draft": 14.0,
              "arrival_shift": 0, "arrival_hour_offset": 0,
-             "max_cranes": 4, "productivity_preference": "MAX"},
+             "max_cranes": 4, "productivity_preference": "MAX",
+             "target_zones": [{"yard_quay_zone_id": 2, "volume": 600}, {"yard_quay_zone_id": 1, "volume": 200}]},
             {"name": "V2-MAERSK", "workload": 600, "loa": 250, "draft": 13.0,
              "arrival_shift": 0, "arrival_hour_offset": 2,
-             "max_cranes": 3, "productivity_preference": "INTERMEDIATE"},
+             "max_cranes": 3, "productivity_preference": "INTERMEDIATE",
+             "target_zones": [{"yard_quay_zone_id": 1, "volume": 500}, {"yard_quay_zone_id": 2, "volume": 100}]},
             {"name": "V3-COSCO", "workload": 500, "loa": 280, "draft": 14.5,
              "arrival_shift": 0, "arrival_hour_offset": 0,
-             "max_cranes": 3, "productivity_preference": "MIN"},
+             "max_cranes": 3, "productivity_preference": "MIN",
+             "target_zones": [{"yard_quay_zone_id": 3, "volume": 500}]},
             {"name": "V4-CMA", "workload": 400, "loa": 200, "draft": 12.0,
              "arrival_shift": 1, "arrival_hour_offset": 0,
-             "max_cranes": 3, "productivity_preference": "INTERMEDIATE"},
+             "max_cranes": 3, "productivity_preference": "INTERMEDIATE",
+             "target_zones": [{"yard_quay_zone_id": 4, "volume": 400}]},
             {"name": "V5-HAPAG", "workload": 350, "loa": 180, "draft": 11.0,
              "arrival_shift": 1, "arrival_hour_offset": 0,
-             "max_cranes": 2, "productivity_preference": "MAX"},
+             "max_cranes": 2, "productivity_preference": "MAX",
+             "target_zones": [{"yard_quay_zone_id": 2, "volume": 350}]},
             {"name": "V6-ONE", "workload": 700, "loa": 290, "draft": 13.5,
              "arrival_shift": 2, "arrival_hour_offset": 0,
              "max_cranes": 3, "productivity_preference": "INTERMEDIATE"},
             {"name": "V7-EVERGREEN", "workload": 900, "loa": 330, "draft": 15.0,
              "arrival_shift": 2, "arrival_hour_offset": 0,
-             "max_cranes": 4, "productivity_preference": "MAX"},
+             "max_cranes": 4, "productivity_preference": "MAX",
+             "target_zones": [{"yard_quay_zone_id": 3, "volume": 900}]},
             {"name": "V8-HMM", "workload": 450, "loa": 220, "draft": 12.5,
              "arrival_shift": 3, "arrival_hour_offset": 0,
              "max_cranes": 3, "productivity_preference": "INTERMEDIATE"},
@@ -128,6 +134,12 @@ def get_default_config():
              "start_shift": 6, "end_shift": 8,
              "description": "Dredging Operations B"}
         ],
+        "yard_quay_zones": [
+            {"id": 1, "name": "Zone A", "start_dist": 0, "end_dist": 500},
+            {"id": 2, "name": "Zone B", "start_dist": 500, "end_dist": 1000},
+            {"id": 3, "name": "Zone C", "start_dist": 1000, "end_dist": 1500},
+            {"id": 4, "name": "Zone D", "start_dist": 1500, "end_dist": 2000},
+        ],
         "solver_settings": {
             "time_limit_seconds": 60
         },
@@ -138,17 +150,26 @@ def get_default_config():
             "enable_crane_reach": True,
             "enable_sts_non_crossing": True,
             "enable_shifting_gang": True,
-            "enable_min_cranes_on_arrival": True
+            "enable_min_cranes_on_arrival": True,
+            "enable_yard_preferences": True
         }
     }
 
 
 def load_config():
     """Load config from file, or return default."""
+    config = get_default_config()
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return get_default_config()
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                user_config = json.load(f)
+                # Merge user config into default to preserve new keys (like yard_quay_zones)
+                # if they are missing in the user file.
+                # For top-level keys like 'vessels', user data overrides default.
+                config.update(user_config)
+        except Exception as e:
+            print(f"Error loading config: {e}")
+    return config
 
 
 def save_config(config):
@@ -178,9 +199,28 @@ def config_to_problem(config):
         s = shifts[shift_idx]
         return s.start_time + dt.timedelta(hours=hour_offset)
 
+    # Yard Zones (Import first to reference in vessels)
+    from models import YardQuayZone, YardQuayZonePreference
+    yard_zones = []
+    for zc in config.get("yard_quay_zones", []):
+        yard_zones.append(YardQuayZone(
+            id=int(zc["id"]),
+            name=zc["name"],
+            start_dist=int(zc["start_dist"]),
+            end_dist=int(zc["end_dist"])
+        ))
+
     # Vessels
     vessels = []
     for vc in config["vessels"]:
+        # Parse target zones
+        target_zones = []
+        for tzc in vc.get("target_zones", []):
+            target_zones.append(YardQuayZonePreference(
+                yard_quay_zone_id=int(tzc["yard_quay_zone_id"]),
+                volume=float(tzc["volume"])
+            ))
+
         v = Vessel(
             name=vc["name"],
             workload=int(vc["workload"]),
@@ -189,6 +229,7 @@ def config_to_problem(config):
             arrival_time=get_dt(int(vc["arrival_shift"]), int(vc.get("arrival_hour_offset", 0))),
             max_cranes=int(vc["max_cranes"]),
             productivity_preference=ProductivityMode(vc["productivity_preference"]),
+            target_zones=target_zones
         )
         vessels.append(v)
 
@@ -269,8 +310,10 @@ def config_to_problem(config):
         shifts=shifts,
         crane_availability_per_shift=availability,
         forbidden_zones=forbidden_zones,
+        yard_quay_zones=yard_zones,
         solver_rules=config.get("solver_rules", {})
     )
+
 
 
 def run_solver_thread(config):

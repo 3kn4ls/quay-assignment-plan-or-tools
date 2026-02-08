@@ -62,6 +62,9 @@ class Vessel:
     max_cranes: int = 3  # Max cranes that fit on the vessel
     productivity_preference: ProductivityMode = ProductivityMode.INTERMEDIATE
     
+    # New Field
+    target_zones: List["YardQuayZonePreference"] = field(default_factory=list)
+
     available_shifts: Optional[List[int]] = None 
     
     # Computed at runtime
@@ -117,7 +120,9 @@ class Problem:
     # Availability: Map shift_index (0 to N-1) -> List of crane_ids available
     crane_availability_per_shift: Dict[int, List[str]]
     forbidden_zones: List[ForbiddenZone] = field(default_factory=list)
+    yard_quay_zones: List["YardQuayZone"] = field(default_factory=list)
     solver_rules: Dict[str, bool] = field(default_factory=dict)
+
 
     @property
     def num_shifts(self) -> int:
@@ -143,3 +148,20 @@ class Solution:
     vessel_solutions: List[VesselSolution]
     objective_value: float
     status: str  # "OPTIMAL", "FEASIBLE", "INFEASIBLE", etc.
+
+
+@dataclass
+class YardQuayZone:
+    """A zone on the quay associated with yard storage."""
+    id: int
+    name: str
+    start_dist: int # Meters from quay start
+    end_dist: int
+
+@dataclass
+class YardQuayZonePreference:
+    """Preference for a vessel to load/unload near a specific zone."""
+    yard_quay_zone_id: int
+    volume: float # Percentage or absolute volume of containers
+
+
