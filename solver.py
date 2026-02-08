@@ -191,22 +191,23 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
     model.add_no_overlap_2d(x_intervals, y_intervals)
 
     # --- 4.2b Forbidden Zones ---
-    for i, v in enumerate(vessels):
-        for z in problem.forbidden_zones:
-            z_x_interval = model.new_fixed_size_interval_var(
-                z.start_berth_position, 
-                z.end_berth_position - z.start_berth_position, 
-                f"z_x_{z.description}_{i}"
-            )
-            z_y_interval = model.new_fixed_size_interval_var(
-                z.start_shift, 
-                z.end_shift - z.start_shift, 
-                f"z_y_{z.description}_{i}"
-            )
-            model.add_no_overlap_2d(
-                [x_intervals[i], z_x_interval], 
-                [y_intervals[i], z_y_interval]
-            )
+    if problem.solver_rules.get("enable_forbidden_zones", True):
+        for i, v in enumerate(vessels):
+            for z in problem.forbidden_zones:
+                z_x_interval = model.new_fixed_size_interval_var(
+                    z.start_berth_position, 
+                    z.end_berth_position - z.start_berth_position, 
+                    f"z_x_{z.description}_{i}"
+                )
+                z_y_interval = model.new_fixed_size_interval_var(
+                    z.start_shift, 
+                    z.end_shift - z.start_shift, 
+                    f"z_y_{z.description}_{i}"
+                )
+                model.add_no_overlap_2d(
+                    [x_intervals[i], z_x_interval], 
+                    [y_intervals[i], z_y_interval]
+                )
 
 
     # ====================================================================
@@ -228,16 +229,16 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
 
     # 2.2 Crane Capacity (Shifting Gang)
     # The sum of moves a crane performs across ALL vessels in one shift <= max_productivity.
-    # This enables sharing/shifting: A crane can do 50 moves for V1 and 50 for V2 in same shift if Cap=100.
-    for t in range(T):
-        for c in cranes:
-            c_moves_in_shift = []
-            for i in range(len(vessels)):
-                if (c.id, i, t) in moves:
-                    c_moves_in_shift.append(moves[c.id, i, t])
-            
-            if c_moves_in_shift:
-                model.add(sum(c_moves_in_shift) <= c.max_productivity)
+    if problem.solver_rules.get("enable_crane_capacity", True):
+        for t in range(T):
+            for c in cranes:
+                c_moves_in_shift = []
+                for i in range(len(vessels)):
+                    if (c.id, i, t) in moves:
+                        c_moves_in_shift.append(moves[c.id, i, t])
+                
+                if c_moves_in_shift:
+                    model.add(sum(c_moves_in_shift) <= c.max_productivity)
 
     # 2.3 Max Cranes per Vessel
     # sum(crane_active[:, i, t]) <= v.max_cranes
@@ -251,98 +252,104 @@ def solve(problem: Problem, time_limit_seconds: int = 60) -> Solution:
         model.add(m_var == 0).only_enforce_if(b_act.Not())
         crane_active_indicators[c_id, i, t] = b_act
 
-    for i, v in enumerate(vessels):
-        for t in range(T):
-            active_vars = []
-            for c in cranes:
-                if (c.id, i, t) in crane_active_indicators:
-                    active_vars.append(crane_active_indicators[c.id, i, t])
-            
-            # Max cranes constraint
-            model.add(sum(active_vars) <= v.max_cranes)
-            
-            # Link to Vessel Active: If Vessel Active, Must have at least 1 crane working?
-            # Or at least > 0 moves total? Use moves sum.
-            moves_vars = []
-            for c in cranes:
-                 if (c.id, i, t) in moves:
-                     moves_vars.append(moves[c.id, i, t])
-            
-            # If active[i,t], sum(moves) >= 1 (Must work if berthed/active)
-            # This minimizes "dead time" at berth.
-            model.add(sum(moves_vars) >= 1).only_enforce_if(active[i, t])
+    if problem.solver_rules.get("enable_max_cranes", True):
+        for i, v in enumerate(vessels):
+            for t in range(T):
+                active_vars = []
+                for c in cranes:
+                    if (c.id, i, t) in crane_active_indicators:
+                        active_vars.append(crane_active_indicators[c.id, i, t])
+                
+                # Max cranes constraint
+                model.add(sum(active_vars) <= v.max_cranes)
+                
+                # Link to Vessel Active: If Vessel Active, Must have at least 1 crane working?
+                # Or at least > 0 moves total? Use moves sum.
+                moves_vars = []
+                for c in cranes:
+                        if (c.id, i, t) in moves:
+                            moves_vars.append(moves[c.id, i, t])
+                
+                # If active[i,t], sum(moves) >= 1 (Must work if berthed/active)
+                # This minimizes "dead time" at berth.
+                # Only enforce if enable_min_cranes_on_arrival is True or part of basic logic
+                if problem.solver_rules.get("enable_min_cranes_on_arrival", True):
+                     model.add(sum(moves_vars) >= 1).only_enforce_if(active[i, t])
 
     # 2.4 Crane Reach Constraints
-    for (c_id, i, t), b_act in crane_active_indicators.items():
-        c = crane_map[c_id]
-        # If crane active => pos[i] >= range_start
-        model.add(pos[i] >= c.berth_range_start).only_enforce_if(b_act)
-        # Check coverage end? 
-        # model.add(pos[i] + vessels[i].loa <= c.berth_range_end).only_enforce_if(b_act)
+    if problem.solver_rules.get("enable_crane_reach", True):
+        for (c_id, i, t), b_act in crane_active_indicators.items():
+            c = crane_map[c_id]
+            # If crane active => pos[i] >= range_start
+            model.add(pos[i] >= c.berth_range_start).only_enforce_if(b_act)
+            # Check coverage end? 
+            # model.add(pos[i] + vessels[i].loa <= c.berth_range_end).only_enforce_if(b_act)
         pass 
 
     # 2.5 STS Non-Crossing
-    sts_cranes = [c for c in cranes if c.crane_type == CraneType.STS]
-    # Assumed sorted by ID/Physical L-to-R
-    for idx1 in range(len(sts_cranes)):
-        for idx2 in range(idx1 + 1, len(sts_cranes)):
-            c1 = sts_cranes[idx1]
-            c2 = sts_cranes[idx2]
-            
-            for t in range(T):
-                # Iterate all vessel pairs
-                for i_a in range(len(vessels)):
-                    for i_b in range(len(vessels)):
-                        if i_a == i_b: continue
-                        
-                        # Indices for lookup
-                        k1 = (c1.id, i_a, t)
-                        k2 = (c2.id, i_b, t)
-                        
-                        if k1 in crane_active_indicators and k2 in crane_active_indicators:
-                            # If c1 on a AND c2 on b => pos[a] <= pos[b]
-                            both_active = model.new_bool_var(f"cross_{t}_{c1.id}_{c2.id}")
-                            model.add_bool_and([crane_active_indicators[k1], crane_active_indicators[k2]]).only_enforce_if(both_active)
-                            model.add(pos[i_a] <= pos[i_b]).only_enforce_if(both_active)
+    if problem.solver_rules.get("enable_sts_non_crossing", True):
+        sts_cranes = [c for c in cranes if c.crane_type == CraneType.STS]
+        # Assumed sorted by ID/Physical L-to-R
+        for idx1 in range(len(sts_cranes)):
+            for idx2 in range(idx1 + 1, len(sts_cranes)):
+                c1 = sts_cranes[idx1]
+                c2 = sts_cranes[idx2]
+                
+                for t in range(T):
+                    # Iterate all vessel pairs
+                    for i_a in range(len(vessels)):
+                        for i_b in range(len(vessels)):
+                            if i_a == i_b: continue
+                            
+                            # Indices for lookup
+                            k1 = (c1.id, i_a, t)
+                            k2 = (c2.id, i_b, t)
+                            
+                            if k1 in crane_active_indicators and k2 in crane_active_indicators:
+                                # If c1 on a AND c2 on b => pos[a] <= pos[b]
+                                both_active = model.new_bool_var(f"cross_{t}_{c1.id}_{c2.id}")
+                                model.add_bool_and([crane_active_indicators[k1], crane_active_indicators[k2]]).only_enforce_if(both_active)
+                                model.add(pos[i_a] <= pos[i_b]).only_enforce_if(both_active)
 
     # 2.6 Restricted Shifting Gang Constraint
     # A crane must work at FULL capacity on a vessel unless it is the LAST shift for that vessel.
-    for t in range(T):
-        available_crane_ids = problem.crane_availability_per_shift.get(t, [])
-        for c_idx, c in enumerate(cranes):
-            if c.id not in available_crane_ids: continue
-            
-            for i, v in enumerate(vessels):
-                # Only if variable exists
-                if (c.id, i, t) not in moves: continue
+    if problem.solver_rules.get("enable_shifting_gang", True):
+        for t in range(T):
+            available_crane_ids = problem.crane_availability_per_shift.get(t, [])
+            for c_idx, c in enumerate(cranes):
+                if c.id not in available_crane_ids: continue
                 
-                mv = moves[c.id, i, t]
-                # Re-calculate limit used for domain
-                limit = c.max_productivity
-                if v.productivity_preference == "MIN": limit = c.min_productivity
-                elif v.productivity_preference == "INTERMEDIATE": limit = (c.min_productivity + c.max_productivity) // 2
-                
-                # Check arrival fraction? If arrival shift is NOT last shift, then it must be full *available* capacity? 
-                # Yes. If t == arrival_shift, limit is reduced. Constraint should enforce *that* reduced limit.
-                if t == v.arrival_shift_index:
-                    limit = int(limit * v.arrival_fraction)
-                
-                # Condition: t < end[i] - 1  (Not the last shift)
-                # We use reified constraint.
-                # is_intermediate <=> t <= end[i] - 2
-                
-                is_intermediate = model.new_bool_var(f"is_intermediate_{c.id}_{v.name}_{t}")
-                model.add(t <= end[i] - 2).only_enforce_if(is_intermediate)
-                model.add(t > end[i] - 2).only_enforce_if(is_intermediate.Not())
-                
-                # Indicator: Crane Active
-                # We need to know if crane IS active. We have crane_active_indicators.
-                if (c.id, i, t) in crane_active_indicators:
-                    b_act = crane_active_indicators[c.id, i, t]
+                for i, v in enumerate(vessels):
+                    # Only if variable exists
+                    if (c.id, i, t) not in moves: continue
                     
-                    # Constraint: If (Active AND Intermediate) => moves == limit
-                    # i.e., NO PARTIAL WORK allowed in intermediate shifts.
-                    model.add(mv == limit).only_enforce_if([b_act, is_intermediate])
+                    mv = moves[c.id, i, t]
+                    # Re-calculate limit used for domain
+                    limit = c.max_productivity
+                    if v.productivity_preference == "MIN": limit = c.min_productivity
+                    elif v.productivity_preference == "INTERMEDIATE": limit = (c.min_productivity + c.max_productivity) // 2
+                    
+                    # Check arrival fraction? If arrival shift is NOT last shift, then it must be full *available* capacity? 
+                    # Yes. If t == arrival_shift, limit is reduced. Constraint should enforce *that* reduced limit.
+                    if t == v.arrival_shift_index:
+                        limit = int(limit * v.arrival_fraction)
+                    
+                    # Condition: t < end[i] - 1  (Not the last shift)
+                    # We use reified constraint.
+                    # is_intermediate <=> t <= end[i] - 2
+                    
+                    is_intermediate = model.new_bool_var(f"is_intermediate_{c.id}_{v.name}_{t}")
+                    model.add(t <= end[i] - 2).only_enforce_if(is_intermediate)
+                    model.add(t > end[i] - 2).only_enforce_if(is_intermediate.Not())
+                    
+                    # Indicator: Crane Active
+                    # We need to know if crane IS active. We have crane_active_indicators.
+                    if (c.id, i, t) in crane_active_indicators:
+                        b_act = crane_active_indicators[c.id, i, t]
+                        
+                        # Constraint: If (Active AND Intermediate) => moves == limit
+                        # i.e., NO PARTIAL WORK allowed in intermediate shifts.
+                        model.add(mv == limit).only_enforce_if([b_act, is_intermediate])
 
 
     # =============================================

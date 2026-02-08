@@ -117,6 +117,7 @@ class Problem:
     # Availability: Map shift_index (0 to N-1) -> List of crane_ids available
     crane_availability_per_shift: Dict[int, List[str]]
     forbidden_zones: List[ForbiddenZone] = field(default_factory=list)
+    solver_rules: Dict[str, bool] = field(default_factory=dict)
 
     @property
     def num_shifts(self) -> int:

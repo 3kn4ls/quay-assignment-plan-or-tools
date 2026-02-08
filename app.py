@@ -130,6 +130,15 @@ def get_default_config():
         ],
         "solver_settings": {
             "time_limit_seconds": 60
+        },
+        "solver_rules": {
+            "enable_forbidden_zones": True,
+            "enable_crane_capacity": True,
+            "enable_max_cranes": True,
+            "enable_crane_reach": True,
+            "enable_sts_non_crossing": True,
+            "enable_shifting_gang": True,
+            "enable_min_cranes_on_arrival": True
         }
     }
 
@@ -260,6 +269,7 @@ def config_to_problem(config):
         shifts=shifts,
         crane_availability_per_shift=availability,
         forbidden_zones=forbidden_zones,
+        solver_rules=config.get("solver_rules", {})
     )
 
 

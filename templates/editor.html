@@ -118,6 +118,7 @@
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-availability">Disponibilidad Gruas</a>
       </li>
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-zones">Zonas Restringidas</a></li>
+      <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-rules">Reglas</a></li>
       <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#tab-solver">Solver</a></li>
     </ul>
 
@@ -265,21 +266,64 @@
         </div>
       </div>
 
-      <!-- TAB: Solver Settings -->
-      <div class="tab-pane fade" id="tab-solver">
-        <div class="card">
-          <div class="card-header bg-secondary text-white">Configuracion del Solver</div>
-          <div class="card-body">
-            <div class="mb-3" style="max-width:300px;">
-              <label class="form-label">Tiempo limite (segundos)</label>
-              <input type="number" class="form-control" id="solverTimeLimit" min="5" max="600" value="60">
-            </div>
-            <p class="text-muted small">El solver CP-SAT usara hasta este tiempo para buscar la solucion optima.</p>
+    </div>
+
+    <!-- TAB: Rules -->
+    <div class="tab-pane fade" id="tab-rules">
+      <div class="card">
+        <div class="card-header bg-dark text-white">Reglas del Solver</div>
+        <div class="card-body">
+          <p class="text-muted small">Seleccione las restricciones que desea aplicar en la optimizacion.</p>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_forbidden_zones" checked>
+            <label class="form-check-label" for="rule_forbidden_zones">Habilitar Zonas Restringidas (Forbidden
+              Zones)</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_crane_capacity" checked>
+            <label class="form-check-label" for="rule_crane_capacity">Restriccion de Capacidad de Gruas (Shifting Gang
+              limit)</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_max_cranes" checked>
+            <label class="form-check-label" for="rule_max_cranes">Maximo de Gruas por Buque</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_min_cranes_on_arrival" checked>
+            <label class="form-check-label" for="rule_min_cranes_on_arrival">Minimo 1 Grua si Buque Activo</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_crane_reach" checked>
+            <label class="form-check-label" for="rule_crane_reach">Restriccion de Alcance de Gruas</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_sts_non_crossing" checked>
+            <label class="form-check-label" for="rule_sts_non_crossing">No Cruce de Gruas STS</label>
+          </div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="rule_shifting_gang" checked>
+            <label class="form-check-label" for="rule_shifting_gang">Shifting Gang (Capacidad Completa obligatoria en
+              turnos intermedios)</label>
           </div>
         </div>
       </div>
-
     </div>
+
+    <!-- TAB: Solver Settings -->
+    <div class="tab-pane fade" id="tab-solver">
+      <div class="card">
+        <div class="card-header bg-secondary text-white">Configuracion del Solver</div>
+        <div class="card-body">
+          <div class="mb-3" style="max-width:300px;">
+            <label class="form-label">Tiempo limite (segundos)</label>
+            <input type="number" class="form-control" id="solverTimeLimit" min="5" max="600" value="60">
+          </div>
+          <p class="text-muted small">El solver CP-SAT usara hasta este tiempo para buscar la solucion optima.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
   </div>
 
   <!-- Solver Overlay -->
@@ -338,6 +382,16 @@
       const zBody = document.querySelector('#zonesTable tbody');
       zBody.innerHTML = '';
       (cfg.forbidden_zones || []).forEach(z => addZoneRow(z));
+
+      // Rules
+      const rules = cfg.solver_rules || {};
+      document.getElementById('rule_forbidden_zones').checked = rules.enable_forbidden_zones !== false;
+      document.getElementById('rule_crane_capacity').checked = rules.enable_crane_capacity !== false;
+      document.getElementById('rule_max_cranes').checked = rules.enable_max_cranes !== false;
+      document.getElementById('rule_min_cranes_on_arrival').checked = rules.enable_min_cranes_on_arrival !== false;
+      document.getElementById('rule_crane_reach').checked = rules.enable_crane_reach !== false;
+      document.getElementById('rule_sts_non_crossing').checked = rules.enable_sts_non_crossing !== false;
+      document.getElementById('rule_shifting_gang').checked = rules.enable_shifting_gang !== false;
 
       // Solver
       document.getElementById('solverTimeLimit').value = (cfg.solver_settings || {}).time_limit_seconds || 60;
@@ -421,6 +475,17 @@
           end_shift: parseInt(inputs[4].value) || 0
         });
       });
+
+      // Rules
+      cfg.solver_rules = {
+        enable_forbidden_zones: document.getElementById('rule_forbidden_zones').checked,
+        enable_crane_capacity: document.getElementById('rule_crane_capacity').checked,
+        enable_max_cranes: document.getElementById('rule_max_cranes').checked,
+        enable_min_cranes_on_arrival: document.getElementById('rule_min_cranes_on_arrival').checked,
+        enable_crane_reach: document.getElementById('rule_crane_reach').checked,
+        enable_sts_non_crossing: document.getElementById('rule_sts_non_crossing').checked,
+        enable_shifting_gang: document.getElementById('rule_shifting_gang').checked
+      };
 
       // Solver settings
       cfg.solver_settings = {
