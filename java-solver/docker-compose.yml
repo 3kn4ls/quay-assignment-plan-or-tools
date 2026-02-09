@@ -1,0 +1,13 @@
+services:
+  solver:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - solver-data:/data
+    environment:
+      - OUTPUT_DIR=/data/output
+      - JAVA_OPTS=-Xmx2g
+
+volumes:
+  solver-data:
