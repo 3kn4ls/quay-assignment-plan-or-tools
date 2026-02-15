@@ -6,3 +6,5 @@ problem_config.json
 # Temporary build files
 *.tar
 /tmp/
+/java-solver/.maven
+/java-solver/target
