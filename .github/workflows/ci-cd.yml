@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Cambia 'tu-usuario' por tu nombre de usuario real de Docker Hub si no quieres usar secrets
-  IMAGE_NAME: ecanals/quay-solver
+  # Usamos GHCR (GitHub Container Registry) para evitar configurar secretos manualmente
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   test:
@@ -18,7 +18,6 @@ jobs:
       - name: Install dependencies
         run: |
           # En Debian 12 arm64 usamos el python3 del sistema
-          # --break-system-packages es necesario en Debian 12 si no se usa venv
           python3 -m pip install --upgrade pip --break-system-packages || true
           if [ -f requirements.txt ]; then 
             python3 -m pip install -r requirements.txt --break-system-packages
@@ -32,9 +31,19 @@ jobs:
     runs-on: self-hosted
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -46,18 +55,12 @@ jobs:
             latest
             
       - name: Build and push Docker image
-        run: |
-          # Convertir la lista de tags de la action metadata a argumentos de docker
-          TAGS=$(echo "${{ steps.meta.outputs.tags }}" | xargs -n 1 echo "-t" | xargs)
-          
-          echo "Construyendo imagen con tags: $TAGS"
-          docker build $TAGS .
-          
-          # Subir cada tag generado
-          for TAG in ${{ steps.meta.outputs.tags }}; do
-            echo "Subiendo imagen: $TAG"
-            docker push $TAG
-          done
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
   deploy:
     needs: build-and-push
