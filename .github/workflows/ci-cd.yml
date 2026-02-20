@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Imagen por defecto. Se sobreescribe en el paso de build/push
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/quay-solver
+  # Cambia 'tu-usuario' por tu nombre de usuario real de Docker Hub si no quieres usar secrets
+  IMAGE_NAME: ecanals/quay-solver
 
 jobs:
   test:
@@ -35,23 +35,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-          
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/quay-solver
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha,format=long
             type=ref,event=branch
@@ -62,7 +53,6 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -72,34 +62,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        
-      - name: Configure Kubeconfig
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
-          
       - name: Deploy to Kubernetes
         run: |
           # Obtener el tag específico del commit (sha-....)
-          # metadata-action genera varios tags, tomamos el que empieza por sha-
           TAG=$(echo "${{ needs.build-and-push.outputs.image_tag }}" | tr ' ' '\n' | grep "sha-" | head -n 1)
-          IMAGE="${{ secrets.DOCKER_USERNAME }}/quay-solver:$TAG"
+          IMAGE="${{ env.IMAGE_NAME }}:$TAG"
           
           echo "Desplegando imagen: $IMAGE"
           
           # Actualizar la imagen en el archivo de despliegue temporalmente
-          # Usamos sed para reemplazar quay-solver:latest por la imagen construida
           sed -i "s|image: quay-solver:latest|image: $IMAGE|g" k8s/deployment.yaml
           
-          # Aplicar los cambios
+          # Aplicar los cambios usando la configuración local de kubectl del runner
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/pvc.yaml
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/ingress.yaml
           
-          # Forzar reinicio para asegurar que baje la nueva imagen
+          # Forzar reinicio
           kubectl -n quay-solver rollout restart deployment/quay-solver
