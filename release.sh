@@ -112,10 +112,11 @@ print_info "Plan de release:"
 print_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  1. Actualizar VERSION: $CURRENT_VERSION -> $NEW_VERSION"
 echo "  2. Actualizar deployment.yaml: ghcr.io/n0rthr3nd/${IMAGE_NAME}:v${NEW_VERSION}"
-echo "  3. Commit y push a GitHub"
-echo "  4. GitHub Actions: build multi-arch (~5 min)"
-echo "  5. Push a GHCR (GitHub Container Registry)"
-echo "  6. ArgoCD sync automático"
+echo "  3. Commit y tag v${NEW_VERSION}"
+echo "  4. Push a GitHub (main + tags)"
+echo "  5. GitHub Actions: build multi-arch (~5 min)"
+echo "  6. Push a GHCR (GitHub Container Registry)"
+echo "  7. ArgoCD sync automático"
 echo ""
 read -p "¿Proceder? (y/n) " -n 1 -r
 echo
@@ -125,11 +126,11 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # 1. Actualizar archivo VERSION
-print_info "Paso 1/3: Actualizando VERSION..."
+print_info "Paso 1/4: Actualizando VERSION..."
 echo "$NEW_VERSION" > "$VERSION_FILE"
 
 # 2. Actualizar deployment.yaml
-print_info "Paso 2/3: Actualizando deployment.yaml..."
+print_info "Paso 2/4: Actualizando deployment.yaml..."
 sed -i "s|image: ghcr.io/n0rthr3nd/${IMAGE_NAME}:v.*|image: ghcr.io/n0rthr3nd/${IMAGE_NAME}:v${NEW_VERSION}|g" "$DEPLOYMENT_FILE"
 
 # Verificar el cambio
@@ -140,8 +141,8 @@ else
     exit 1
 fi
 
-# 3. Commit y push
-print_info "Paso 3/3: Haciendo commit y push a GitHub..."
+# 3. Commit y tag
+print_info "Paso 3/4: Haciendo commit y tag v${NEW_VERSION}..."
 
 git add "$VERSION_FILE" "$DEPLOYMENT_FILE"
 git commit -m "release: v${NEW_VERSION} - ${COMMIT_MESSAGE}
@@ -150,7 +151,13 @@ git commit -m "release: v${NEW_VERSION} - ${COMMIT_MESSAGE}
 
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 
+git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION} - ${COMMIT_MESSAGE}"
+
+# 4. Push
+print_info "Paso 4/4: Haciendo push a GitHub (main y tags)..."
+
 git push origin main
+git push origin --tags
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -159,6 +166,7 @@ if [ $? -eq 0 ]; then
     print_success "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     print_info "📦 Imagen: ghcr.io/n0rthr3nd/${IMAGE_NAME}:v${NEW_VERSION}"
+    print_info "🏷️  Tag: v${NEW_VERSION}"
     print_info "🔄 Commit: $(git rev-parse --short HEAD)"
     print_info "📝 Mensaje: ${COMMIT_MESSAGE}"
     echo ""
