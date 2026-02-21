@@ -8,12 +8,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  # Forzamos el nombre de la imagen para que coincida exactamente con el deployment
+  IMAGE_NAME: ghcr.io/n0rthr3nd/quay-assignment-plan-or-tools
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Evitamos ejecutar el test dos veces si es un push a main con tag
+    # Evitamos ejecutar el test dos veces si es un push a main con tag (el tag ya disparará su build)
     if: github.event_name != 'push' || github.ref_type != 'branch' || !contains(github.event.head_commit.message, 'release:')
     steps:
       - uses: actions/checkout@v4
@@ -43,10 +44,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Lowercase IMAGE_NAME
-        run: |
-          echo "IMAGE_NAME=$(echo ${{ env.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-          
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -98,7 +95,6 @@ jobs:
           
           echo "Solicitando sincronización a ArgoCD..."
           
-          # Nombre de la aplicación en ArgoCD
           APP_NAME="quay-assignment-plan-or-tools"
           
           curl -k -X POST \
@@ -107,6 +103,4 @@ jobs:
             -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
             -H "Content-Type: application/json" \
             "${ARGOCD_SERVER}/api/v1/applications/${APP_NAME}/sync" \
-            -d '{"prune":false,"dryRun":false,"strategy":{"hook":{"force":true}}}' || echo "ArgoCD API no disponible, el Image Updater se encargará de la sincronización."
-          
-          echo "Paso de despliegue finalizado."
+            -d '{"prune":false,"dryRun":false,"strategy":{"hook":{"force":true}}}' || echo "ArgoCD API no disponible."
